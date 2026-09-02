@@ -21,6 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The Mcp project stamps its version with GitVersion during build, which needs
+          # the full history rather than the default shallow clone.
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -62,12 +66,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      # Build only - no registry credentials, so this proves the Dockerfile still works
-      # without giving a fork's pull request anything to push with.
-      - name: Build image
-        uses: docker/build-push-action@v6
         with:
-          context: .
-          push: false
-          tags: hexmaster-coding-standards:ci
+          # GitVersion derives the image tag from the commit history, so the shallow clone
+          # actions/checkout takes by default is not enough.
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # Written to a local archive rather than pushed: it proves the container
+      # configuration still produces an image, without giving a fork's pull request
+      # registry credentials.
+      - name: Publish container image
+        run: >-
+          dotnet publish src/HexMaster.CodingStandards.Mcp
+          --configuration Release
+          -t:PublishContainer
+          -p:ContainerArchiveOutputPath=${{ runner.temp }}/image.tar

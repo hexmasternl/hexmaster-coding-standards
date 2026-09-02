@@ -1,0 +1,8 @@
+# Version source for the container image tag. GitHubFlow: main is the release branch, and
+# every other branch is a pre-release derived from it, so a feature branch cannot produce a
+# tag that looks like a release.
+workflow: GitHubFlow/v1
+
+# Until the first `v*` git tag exists there is nothing to count forward from, so this is the
+# version the history is measured against. Bump it with a git tag, not by editing this file.
+next-version: 1.0.0

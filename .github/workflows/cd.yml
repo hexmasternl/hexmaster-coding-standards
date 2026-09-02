@@ -9,10 +9,9 @@ on:
     paths:
       - 'src/**'
       - 'infra/**'
-      - 'Dockerfile'
-      - '.dockerignore'
       - 'global.json'
       - 'Directory.Build.props'
+      - 'GitVersion.yml'
       - '.github/workflows/cd.yml'
   workflow_dispatch:
 
@@ -32,15 +31,25 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod
     env:
-      # The registry is not deployed by this repository. It already exists, and its login
-      # server and credentials come from repository secrets.
-      IMAGE_NAME: ${{ secrets.ACR_LOGIN_SERVER }}/hexmaster-coding-standards
       # Only the region the subscription-scoped deployment records itself in; the resources
       # take their location from the parameter file.
       AZURE_LOCATION: swedencentral
+      MCP_PROJECT: src/HexMaster.CodingStandards.Mcp
     steps:
       - uses: actions/checkout@v4
+        with:
+          # GitVersion derives the image tag from the commit history, so the shallow clone
+          # actions/checkout takes by default is not enough.
+          fetch-depth: 0
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # The SDK pushes the image using the credentials docker/login-action writes to
+      # ~/.docker/config.json, so this is still the login step even though no docker build
+      # happens.
       - name: Sign in to the container registry
         uses: docker/login-action@v3
         with:
@@ -48,21 +57,35 @@ jobs:
           username: ${{ secrets.ACR_LOGIN_USERNAME }}
           password: ${{ secrets.ACR_LOGIN_PASSWORD }}
 
+      # Asked of the project rather than assembled here, so the repository name and the
+      # GitVersion tag have exactly one definition - the csproj - and the image the
+      # container app is pinned to cannot drift from the image that was pushed.
+      - name: Resolve the image reference
+        id: image
+        run: |
+          properties=$(dotnet msbuild "$MCP_PROJECT" \
+            -t:SetContainerImageTagFromGitVersion \
+            -getProperty:ContainerRepository \
+            -getProperty:ContainerImageTag \
+            -nologo)
+
+          repository=$(echo "$properties" | jq -er .Properties.ContainerRepository)
+          tag=$(echo "$properties" | jq -er .Properties.ContainerImageTag)
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "reference=${{ secrets.ACR_LOGIN_SERVER }}/$repository:$tag" >> "$GITHUB_OUTPUT"
+
       # The image is pushed before the infrastructure is deployed, so the app's first
-      # revision can be pinned to it straight away. Tagged with the full commit SHA, which
-      # is what makes a rollback a redeploy of an existing tag rather than a rebuild;
-      # `latest` moves alongside it for convenience but is never what the infrastructure
-      # references.
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # revision can be pinned to it straight away. The tag is the semantic version
+      # GitVersion derives from the history, which is what makes a rollback a redeploy of
+      # an existing tag rather than a rebuild. The registry comes from the secret rather
+      # than the csproj default, so the push and the pull agree on one value.
+      - name: Build and push container image
+        run: >-
+          dotnet publish "$MCP_PROJECT"
+          --configuration Release
+          -t:PublishContainer
+          -p:ContainerRegistry=${{ secrets.ACR_LOGIN_SERVER }}
 
       - name: Sign in to Azure
         uses: azure/login@v2
@@ -86,7 +109,7 @@ jobs:
           template: infra/main.bicep
           parameters: >-
             infra/params/prod.bicepparam
-            containerImage=${{ env.IMAGE_NAME }}:${{ github.sha }}
+            containerImage=${{ steps.image.outputs.reference }}
             registryLoginServer=${{ secrets.ACR_LOGIN_SERVER }}
             registryUsername=${{ secrets.ACR_LOGIN_USERNAME }}
             registryPassword=${{ secrets.ACR_LOGIN_PASSWORD }}
@@ -123,9 +146,9 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| Endpoint | ${{ steps.application.outputs.url }} |"
-            echo "| Image tag | \`${{ github.sha }}\` |"
+            echo "| Image | \`${{ steps.image.outputs.reference }}\` |"
             echo "| Resource group | ${{ steps.application.outputs.resourceGroupName }} |"
             echo "| Container app | ${{ steps.application.outputs.containerAppName }} |"
             echo
-            echo "Roll back by re-running this workflow's deploy step with a previous commit SHA tag."
+            echo "Roll back by re-running this workflow pinned to a previously published version tag."
           } >> "$GITHUB_STEP_SUMMARY"
