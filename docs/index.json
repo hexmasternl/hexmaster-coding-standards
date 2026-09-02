@@ -1,0 +1,31 @@
+{
+  "documents": [
+    {
+      "id": "adr-template",
+      "title": "ADR template",
+      "description": "The expected shape of an architecture decision record: context that stands on its own, the decision in the present tense with its rationale, alternatives with the specific reason each lost, consequences including knowingly accepted costs, and a status history recorded as transitions.",
+      "category": "ADR",
+      "status": "draft",
+      "tags": ["template", "authoring", "decision-records"],
+      "path": "docs/ADR/0000-adr-template.md"
+    },
+    {
+      "id": "design-template",
+      "title": "Design template",
+      "description": "The expected shape of a coding design document: the problem it addresses, the pattern stated concretely enough to apply without asking, the reasoning that keeps it from being cargo-culted, the boundary where it should not be applied, and paired good and bad examples.",
+      "category": "Design",
+      "status": "draft",
+      "tags": ["template", "authoring", "patterns"],
+      "path": "docs/Designs/0000-design-template.md"
+    },
+    {
+      "id": "structure-template",
+      "title": "Structure template",
+      "description": "The expected shape of a file, folder, and project structure standard: an annotated tree, rules a reviewer can check in a pull request, naming conventions including the project-to-test-project mapping, and the reasoning that stops a folder being collapsed later.",
+      "category": "Structure",
+      "status": "draft",
+      "tags": ["template", "authoring", "project-layout"],
+      "path": "docs/Structures/0000-structure-template.md"
+    }
+  ]
+}
