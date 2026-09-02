@@ -81,6 +81,6 @@ with no document logic of its own.
 
 - The MCP transport runs in **stateless** mode deliberately. The container app scales to zero
   with HTTP-based scaling, so consecutive requests from one client can hit different replicas.
-- The container listens on port **8080** (`ASPNETCORE_HTTP_PORTS`, set in the `Dockerfile`).
+- The container listens on port **8080** (`ASPNETCORE_HTTP_PORTS`, set as a `ContainerEnvironmentVariable` in the csproj).
   Locally it uses the ports in `Properties/launchSettings.json`.
 - `/health` is unauthenticated, because the Container Apps probes call it.
