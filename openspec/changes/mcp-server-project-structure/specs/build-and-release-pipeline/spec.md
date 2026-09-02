@@ -31,17 +31,22 @@ The repository SHALL contain a GitHub Actions workflow at `.github/workflows/ci.
 
 ### Requirement: Continuous deployment workflow
 
-The repository SHALL contain a GitHub Actions workflow at `.github/workflows/cd.yml` that runs on pushes to `main` affecting `src/**`, `docs/**`, `infra/**`, or the workflow file itself, and that can also be started manually. It SHALL deploy the infrastructure, build and push the container image, then redeploy the infrastructure pinned to that image, in that order.
+The repository SHALL contain a GitHub Actions workflow at `.github/workflows/cd.yml` that runs on pushes to `main` affecting `src/**`, `infra/**`, or the workflow file itself, and that can also be started manually. It SHALL deploy the infrastructure, build and push the container image, then redeploy the infrastructure pinned to that image, in that order.
 
 #### Scenario: A code change is deployed
 
 - **WHEN** a commit changing `src/**` is pushed to `main`
 - **THEN** the workflow builds and pushes an image and the container app ends up running it
 
-#### Scenario: A content change is deployed
+#### Scenario: An infrastructure change is deployed
+
+- **WHEN** a commit changing `infra/**` is pushed to `main`
+- **THEN** the workflow deploys the updated templates
+
+#### Scenario: A content change does not deploy
 
 - **WHEN** a commit changing only `docs/**` is pushed to `main`
-- **THEN** the workflow runs and the deployed app serves the updated content
+- **THEN** the CD workflow does not run, because the running server fetches content from GitHub itself
 
 #### Scenario: An unrelated change does not deploy
 
