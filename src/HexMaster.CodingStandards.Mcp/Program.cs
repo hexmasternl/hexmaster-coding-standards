@@ -1,19 +1,43 @@
+using HexMaster.CodingStandards.Docs;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add the MCP services: the transport to use (http) and the tools to register.
+// The document layer: downloads the coding standards from GitHub, caches them, and serves
+// retrieval, the index, and keyword search. One call so a new dependency inside the Docs
+// project never means an edit here.
+builder.Services.AddCodingStandardsDocuments(builder.Configuration);
+
+builder.Services
+    .AddHealthChecks()
+    .AddCheck<DocumentsHealthCheck>(
+        DocumentServiceCollectionExtensions.HealthCheckName,
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["ready"]);
+
 builder.Services
     .AddMcpServer()
     .WithHttpTransport(options =>
     {
-        // Stateless mode is recommended for servers that don't need
-        // server-to-client requests like sampling or elicitation.
-        // See https://csharp.sdk.modelcontextprotocol.io/concepts/transports/transports.html for details.
+        // Stateless is load-bearing, not a default worth changing. The container app runs
+        // minReplicas 0 with HTTP scaling, so consecutive requests from one client can land
+        // on different replicas and a replica can vanish between them. Stateless mode means
+        // no session affinity is needed - at the cost of server-to-client requests
+        // (sampling, elicitation), which this server does not use.
         options.Stateless = true;
     })
-    ;
+    .WithToolsFromAssembly();
 
 var app = builder.Build();
+
+// Container Apps ingress terminates TLS and forwards plain HTTP, so UseHttpsRedirection()
+// would see an HTTP request and redirect - a loop, or a broken client. HTTPS is enforced at
+// the edge instead (ingress allowInsecure: false).
+
 app.MapMcp();
-app.UseHttpsRedirection();
+
+// Unauthenticated, and used by the Container Apps probes. Healthy means content has loaded;
+// a later failed refresh keeps serving what is cached and stays healthy.
+app.MapHealthChecks("/health");
 
 app.Run();

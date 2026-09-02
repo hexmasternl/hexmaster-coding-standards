@@ -1,0 +1,18 @@
+# Only src/ and the build props are needed to build the image.
+**/bin/
+**/obj/
+.git/
+.github/
+.claude/
+.vs/
+docs/
+infra/
+openspec/
+tests/
+tools/
+*.md
+*.slnx
+Dockerfile
+.dockerignore
+.gitignore
+LICENSE

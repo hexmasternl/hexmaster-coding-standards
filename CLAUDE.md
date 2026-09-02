@@ -12,7 +12,8 @@ The repository is public: `https://github.com/hexmasternl/hexmaster-coding-stand
 
 ```
 HexMaster Coding Standards.slnx                # solution, repository root
-global.json                                    # pinned SDK version
+global.json                                    # pinned SDK + MTP test-runner opt-in
+Directory.Build.props                          # TFM, nullable, warnings-as-errors for all projects
 Dockerfile                                     # multi-stage, linux-x64, chiselled ASP.NET base
 
 src/HexMaster.CodingStandards.Mcp/             # ASP.NET Core host
@@ -25,6 +26,8 @@ src/HexMaster.CodingStandards.Docs/            # the only component that touches
                                                #   and serves retrieval / index / keyword search
 
 tests/HexMaster.CodingStandards.Docs.Tests/    # xUnit v3, offline, fixture-driven
+
+tools/HexMaster.CodingStandards.CatalogValidator/  # `validate-catalog`, run by CI and locally
 
 docs/                                          # the served content
   index.json                                   #   authoritative catalog of every document
@@ -58,15 +61,24 @@ dotnet test                                           # xUnit v3, no network req
 dotnet test --filter "FullyQualifiedName~<TestName>"  # a single test
 dotnet run --project src/HexMaster.CodingStandards.Mcp
 
+dotnet run --project tools/HexMaster.CodingStandards.CatalogValidator -- .   # validate docs/index.json
+
 docker build -t hexmaster-coding-standards .
 az bicep build --file infra/main.bicep
+az bicep build-params --file infra/params/prod.bicepparam
 ```
+
+`dotnet test` needs the `"test": { "runner": "Microsoft.Testing.Platform" }` block in
+`global.json`. xUnit v3 runs on Microsoft.Testing.Platform, and the .NET 10 SDK refuses the
+retired VSTest bridge — without that opt-in, `dotnet test` fails before running anything.
 
 The server is reachable on its Kestrel port locally (see `Properties/launchSettings.json`); in the container it listens on **8080** via `ASPNETCORE_HTTP_PORTS`.
 
 ## Architecture notes worth knowing before you change things
 
 - **Content comes from GitHub at runtime.** A refresh downloads the repository **archive for the configured ref in a single request** and takes the catalog and every document body from that one archive. This is deliberate: one request per refresh keeps unauthenticated rate limits irrelevant, and it guarantees the catalog and the bodies come from the same commit. Do not replace it with per-document `raw.githubusercontent.com` fetches.
+- **The archive comes from the API tarball endpoint** (`api.github.com/repos/{owner}/{repo}/tarball/{ref}`), not a codeload URL, because that one path resolves a branch, a tag, or a commit SHA. Codeload needs the ref kind baked into the URL (`refs/heads/` versus `refs/tags/`), which would make `Documents__Ref` accept branches only. GitHub rejects these requests without a user agent, so the named `HttpClient` sets one.
+- **A truncated or non-tarball response becomes `ContentUnavailableException`.** GitHub serving an error page, or a cut-short download, would otherwise surface as a raw `EndOfStreamException`/`InvalidDataException` and bypass the fall-back-to-cached-content path. The translation in `ContentArchiveExtractor` is what keeps that path reachable.
 - **The cache is in-memory and per-replica**, refreshed on a TTL (default 15 minutes) and swapped atomically. A failed refresh keeps serving the last good content; only a replica that has *never* loaded content is unhealthy. `GET /health` encodes exactly that distinction — keep it that way, because it is what stops a GitHub outage from becoming an outage here.
 - **`index.json` is authoritative.** The server does not crawl folders. A document missing from the catalog is invisible; an entry pointing at a missing file is a runtime failure. CI fails the build when the catalog and the tree disagree. When you add, change, or delete anything under `/docs`, the `docs-index` skill updates the catalog in the same change.
 - **Archive extraction is confined to the `docs/` prefix.** Entries resolving outside it — absolute paths, traversal segments, links — are skipped and logged. The archive is untrusted input; do not loosen this.
@@ -75,7 +87,8 @@ The server is reachable on its Kestrel port locally (see `Properties/launchSetti
 - **Search is a deliberate in-memory scan** over title, description, tags, and body, ranking metadata matches above body matches. At tens of documents an index would be infrastructure serving a problem this project does not have. It sits behind an interface if that changes.
 - **The container image is framework-dependent `linux-x64`.** The template's `SelfContained` / `PublishSingleFile` / multi-RID settings were removed on purpose — the base image supplies the runtime, and cold-start time matters under scale-to-zero.
 - **CD deploys Bicep twice per release**: deploy infra → build and push the image to the now-existing registry → redeploy infra pinned to the image SHA. That is what makes a fresh subscription self-bootstrapping. Pushes touching only `docs/**` do **not** trigger CD.
-- **No secrets anywhere.** Azure auth is OIDC federated credentials; the container app pulls from the registry with a user-assigned managed identity holding `AcrPull`, and registry admin credentials are disabled.
+- **No secrets anywhere.** Azure auth is OIDC federated credentials (`vars.*` only, no `secrets.*` in either workflow); the container app pulls from the registry with a user-assigned managed identity holding `AcrPull`, and registry admin credentials are disabled.
+- **Two Bicep details that look odd and are not.** The `AcrPull` role assignment lives *inside* `modules/registry.bicep` because an assignment name must be computable at the start of the deployment, and the registry's resource id only is inside that module. And `main.bicep` omits the app's `registries` block entirely while the image is the `mcr.microsoft.com` placeholder — naming a registry that holds no image yet would fail the first revision, which is exactly the bootstrap case the placeholder exists for.
 
 ## Conventions
 

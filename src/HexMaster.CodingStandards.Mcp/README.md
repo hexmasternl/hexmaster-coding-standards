@@ -1,56 +1,85 @@
-# MCP Server
+# HexMaster.CodingStandards.Mcp
 
-This README was created using the C# MCP server project template.
-It demonstrates how you can easily create an MCP server using C# and run it as an ASP.NET Core web application.
+The MCP server that serves HexMaster's coding standards over the Model Context Protocol.
 
-The MCP server is built as a self-contained application and does not require the .NET runtime to be installed on the target machine.
-However, since it is self-contained, it must be built for each target platform separately.
-By default, the template is configured to build for:
-* `win-x64`
-* `win-arm64`
-* `osx-arm64`
-* `linux-x64`
-* `linux-arm64`
-* `linux-musl-x64`
+This project is the protocol edge: HTTP transport, dependency-injection composition, the
+`Tools/` folder, and `GET /health`. Everything to do with the documents themselves —
+downloading them from GitHub, caching them, retrieval, the index, keyword search — lives in
+`HexMaster.CodingStandards.Docs`.
 
-If you require more platforms to be supported, update the list of runtime identifiers in the project's `<RuntimeIdentifiers />` element.
+## Running locally
 
-## Developing locally
+```powershell
+dotnet run --project src/HexMaster.CodingStandards.Mcp
+```
 
-To test this MCP server from source code (locally), you can configure your IDE to connect to the server using localhost.
+The server needs outbound HTTPS: it downloads the documents from
+[hexmasternl/hexmaster-coding-standards](https://github.com/hexmasternl/hexmaster-coding-standards)
+on startup and refreshes them on an interval. No configuration is required — the defaults
+target the public repository at `main`.
+
+Check it is up and has content:
+
+```powershell
+curl http://localhost:6094/health
+```
+
+`Healthy` means the standards loaded. `Unhealthy` means nothing has loaded yet — usually no
+network, a bad `Documents:Ref`, or GitHub being unreachable. Once content has loaded, a later
+failed refresh keeps serving the cached copy and health stays green.
+
+## Connecting a client
+
+Point an MCP client at the server's HTTP endpoint:
 
 ```json
 {
   "servers": {
-    "HexMaster.CodingStandards.Mcp": {
+    "hexmaster-coding-standards": {
       "type": "http",
-      "url": "https://localhost:5085"
+      "url": "http://localhost:6094"
     }
   }
 }
 ```
 
-Refer to the VS Code or Visual Studio documentation for more information on configuring and using MCP servers:
+Use the `http` URL locally rather than `https`. The dev certificate trips up some MCP clients
+(see [microsoft/vscode#248170](https://github.com/microsoft/vscode/issues/248170)), and the
+server is designed to sit behind TLS termination anyway — in Azure, Container Apps ingress
+handles HTTPS and forwards plain HTTP to the container.
 
-- [Use MCP servers in VS Code](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)
-- [Use MCP servers in Visual Studio](https://learn.microsoft.com/visualstudio/ide/mcp-servers)
+For client-specific setup, see
+[Use MCP servers in VS Code](https://code.visualstudio.com/docs/copilot/chat/mcp-servers) or
+[Use MCP servers in Visual Studio](https://learn.microsoft.com/visualstudio/ide/mcp-servers).
 
-## Testing the MCP Server
+## Configuration
 
-Once configured, you can ask Copilot Chat for a random number, for example, `Give me 3 random numbers`. It should prompt you to use the `get_random_number` tool on the `HexMaster.CodingStandards.Mcp` MCP server and show you the results.
+All settings live under the `Documents` section and are overridable by environment variable
+(`Documents__Ref`, and so on), which is how they are supplied in the container.
 
-## Known issues
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `Owner` | `hexmasternl` | GitHub account owning the content repository |
+| `Repository` | `hexmaster-coding-standards` | Content repository name |
+| `Ref` | `main` | Branch, tag, or commit to serve |
+| `RefreshInterval` | `00:15:00` | How often content is re-downloaded |
+| `RequestTimeout` | `00:00:30` | Per-download timeout |
+| `AccessToken` | none | Optional; raises GitHub rate limits and allows a private repository |
 
-1. When using VS Code, connecting to `https://localhost:5085` fails.
-  * This is related to using a self-signed developer certificate, even when the certificate is trusted by the system.
-  * Connecting with `http://localhost:6094` succeeds.
-  * See [Cannot connect to MCP server via SSE using trusted developer certificate (microsoft/vscode#248170)](https://github.com/microsoft/vscode/issues/248170) for more information.
+Never commit an access token. Locally, use `dotnet user-secrets set "Documents:AccessToken"
+"<token>"`; in Azure, supply it as a container app secret.
 
-## More information
+## Adding a tool
 
-ASP.NET Core MCP servers use the [ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore) package from the MCP C# SDK. For more information about MCP:
+Add a class to `Tools/` carrying the MCP tool attributes and it is picked up automatically —
+`Program.cs` registers tools by assembly scan, so no registration edit is needed. Keep the
+tool thin: it should translate an MCP call onto `IDocumentService` and shape the result,
+with no document logic of its own.
 
-- [Official Documentation](https://modelcontextprotocol.io/)
-- [Protocol Specification](https://spec.modelcontextprotocol.io/)
-- [GitHub Organization](https://github.com/modelcontextprotocol)
-- [MCP C# SDK](https://csharp.sdk.modelcontextprotocol.io/)
+## Notes
+
+- The MCP transport runs in **stateless** mode deliberately. The container app scales to zero
+  with HTTP-based scaling, so consecutive requests from one client can hit different replicas.
+- The container listens on port **8080** (`ASPNETCORE_HTTP_PORTS`, set in the `Dockerfile`).
+  Locally it uses the ports in `Properties/launchSettings.json`.
+- `/health` is unauthenticated, because the Container Apps probes call it.

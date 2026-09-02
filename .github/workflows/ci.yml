@@ -1,0 +1,73 @@
+name: CI
+
+# Deliberately needs no Azure credentials, so it runs identically on a fork's pull request.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      # Directory.Build.props sets TreatWarningsAsErrors, so a warning fails here.
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release
+
+      # docs/index.json is authoritative: an unindexed document is invisible to the server
+      # and an entry pointing at a missing file fails at runtime. Both are caught here
+      # rather than in production.
+      - name: Validate the document catalog
+        run: dotnet run --project tools/HexMaster.CodingStandards.CatalogValidator --no-build --configuration Release -- .
+
+  infrastructure:
+    name: Validate infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Compiling the templates surfaces infrastructure syntax and type errors in review,
+      # without needing a subscription to deploy into.
+      - name: Compile Bicep templates
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          az bicep build-params --file infra/params/prod.bicepparam --stdout > /dev/null
+
+  container:
+    name: Build container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build only - no registry credentials, so this proves the Dockerfile still works
+      # without giving a fork's pull request anything to push with.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: hexmaster-coding-standards:ci
