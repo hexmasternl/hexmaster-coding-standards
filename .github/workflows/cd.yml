@@ -150,6 +150,8 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| Endpoint | ${{ steps.application.outputs.url }} |"
+            echo "| Custom domain | ${{ steps.application.outputs.customDomainUrl }} |"
+            echo "| Domain verification id | ${{ steps.application.outputs.customDomainVerificationId }} |"
             echo "| Image | \`${{ steps.image.outputs.reference }}\` |"
             echo "| Resource group | ${{ steps.application.outputs.resourceGroupName }} |"
             echo "| Container app | ${{ steps.application.outputs.containerAppName }} |"

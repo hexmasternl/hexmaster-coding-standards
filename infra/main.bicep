@@ -48,6 +48,34 @@ param registryUsername string = ''
 @secure()
 param registryPassword string = ''
 
+@description('''
+Custom domain to serve the MCP server on. Empty deploys no certificate and binds no
+hostname, which is what a deployment into a subscription whose DNS is not set up yet needs.
+
+Setting it puts two prerequisites on the DNS zone, both of which have to resolve *before*
+the deployment runs and have to keep resolving afterwards, because certificate renewal
+re-validates them:
+
+  CNAME  <subdomain>         -> the app's default FQDN (the `fqdn` output)
+  TXT    asuid.<subdomain>   -> the `customDomainVerificationId` output
+
+That ordering is the awkward part of a first deployment: the CNAME target only exists once
+the app does. Deploy once with this empty, take the two outputs, create the records, then set
+the domain with bindCustomDomainCertificate false, and once more with it true.
+''')
+param customDomainName string = ''
+
+@description('''
+Whether to issue the managed certificate and secure the custom domain with it. Ignored when
+no custom domain is given.
+
+This exists because Azure wants the hostname added to the app *before* a certificate is
+issued for it, and one ARM deployment cannot do both to the same resource. False adds the
+hostname over HTTP only; true issues the certificate and switches the binding to SNI. Prod
+runs with true - false is only for the one deployment that first introduces a domain.
+''')
+param bindCustomDomainCertificate bool = true
+
 @description('Highest number of replicas HTTP scaling may create.')
 @minValue(1)
 @maxValue(30)
@@ -84,6 +112,9 @@ module environment 'modules/environment.bicep' = {
   params: {
     name: '${applicationName}-${environmentName}-env'
     workspaceName: '${applicationName}-${environmentName}-logs'
+    // Empty until the certificate is wanted, so the environment issues none while the
+    // hostname is still being introduced to the app.
+    customDomainName: bindCustomDomainCertificate ? customDomainName : ''
     location: location
     tags: tags
   }
@@ -97,6 +128,8 @@ module containerApp 'modules/containerApp.bicep' = {
     location: location
     tags: tags
     managedEnvironmentId: environment.outputs.id
+    customDomainName: customDomainName
+    customDomainCertificateId: environment.outputs.managedCertificateId
     containerImage: containerImage
     registryLoginServer: registryLoginServer
     registryUsername: registryUsername
@@ -120,3 +153,9 @@ output fqdn string = containerApp.outputs.fqdn
 
 @description('Container app name, for deployment and diagnostics.')
 output containerAppName string = containerApp.outputs.name
+
+@description('Public HTTPS endpoint on the custom domain, or empty when none is bound.')
+output customDomainUrl string = containerApp.outputs.customDomainUrl
+
+@description('Value the asuid TXT record has to carry for the custom domain to validate.')
+output customDomainVerificationId string = containerApp.outputs.customDomainVerificationId

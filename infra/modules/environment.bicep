@@ -10,6 +10,13 @@ param location string
 @description('Tags applied to both resources.')
 param tags object
 
+@description('''
+Custom domain to issue a free managed certificate for. Empty issues none. Issuance performs
+domain control validation immediately, so the DNS records have to exist before a deployment
+that sets this - see the notes in main.bicep.
+''')
+param customDomainName string = ''
+
 @description('How many days to retain logs. 30 is the free-tier floor.')
 @minValue(30)
 @maxValue(730)
@@ -53,7 +60,33 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
+
+// Free, auto-renewing certificate for the custom domain, issued by DigiCert against the
+// environment. It lives on the environment rather than the app because that is where
+// Container Apps keeps certificates; the app references it by id.
+//
+// Validation happens during this resource's own deployment, so it fails - and takes the
+// deployment with it - unless the CNAME and asuid TXT records already resolve. Renewal
+// re-validates, so those records have to stay in place for good.
+resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2024-03-01' = if (!empty(customDomainName)) {
+  parent: managedEnvironment
+  // Dots are legal in the name but make for awkward resource ids, and the name only has to
+  // be unique within the environment.
+  name: replace(customDomainName, '.', '-')
+  location: location
+  tags: tags
+  properties: {
+    subjectName: customDomainName
+    // A subdomain, so it is validated through the CNAME that has to point at the app
+    // anyway. Apex domains would need TXT instead.
+    domainControlValidation: 'CNAME'
+  }
+}
+
 output id string = managedEnvironment.id
 output name string = managedEnvironment.name
 output workspaceId string = workspace.id
 output workspaceCustomerId string = workspace.properties.customerId
+
+@description('Resource id of the managed certificate, or empty when no custom domain was given.')
+output managedCertificateId string = empty(customDomainName) ? '' : managedCertificate.id

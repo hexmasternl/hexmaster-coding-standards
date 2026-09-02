@@ -9,22 +9,119 @@ repository at runtime, so **publishing a standard is a merge to `main`**, not a 
 
 ## Connecting an MCP client
 
-The server runs as an Azure Container App and scales to zero when idle, so the first request
-after a quiet period takes a few seconds.
+The server lives at **`https://standards-mcp.hexmaster.nl`** — one remote HTTP MCP endpoint,
+no authentication, nothing to install. The URL is the entire configuration.
+
+It runs as an Azure Container App with `minReplicas: 0`, so it scales to zero when idle and
+the first request after a quiet period takes a few seconds. A client that gives up instantly
+on a cold start usually succeeds on the next try.
+
+Two config shapes exist in the wild — `mcpServers` (Claude, Cursor) and `servers` (VS Code,
+Visual Studio) — but the object inside is the same. Below is each client's.
+
+### Claude Code
+
+From the repository you want the standards in:
+
+```powershell
+claude mcp add --transport http --scope project hexmaster-coding-standards https://standards-mcp.hexmaster.nl
+```
+
+`--scope project` writes `.mcp.json` in the repository root. That is the scope to want for a
+team standard: the file is checked in, so everyone who clones the repository gets the server.
+Use `--scope user` instead to have it in every project on your machine.
+
+The same thing written by hand — `.mcp.json` at the repository root:
+
+```json
+{
+  "mcpServers": {
+    "hexmaster-coding-standards": {
+      "type": "http",
+      "url": "https://standards-mcp.hexmaster.nl"
+    }
+  }
+}
+```
+
+Run `/mcp` in a session to check: the server should be listed as connected, with four tools.
+
+### Claude Desktop and claude.ai
+
+Settings → **Connectors** → **Add custom connector**, then paste the URL. A remote MCP server
+needs no local proxy and no command — name it, give it the URL, save. It then appears in the
+attachments/tools menu of a conversation, where it can be switched on per chat.
+
+### GitHub Copilot
+
+**VS Code** — put this in `.vscode/mcp.json` to share it with the repository, or add it to
+your user profile via the **MCP: Add Server…** command (choose *HTTP*, paste the URL) to have
+it everywhere:
 
 ```json
 {
   "servers": {
     "hexmaster-coding-standards": {
       "type": "http",
-      "url": "https://<endpoint>"
+      "url": "https://standards-mcp.hexmaster.nl"
     }
   }
 }
 ```
 
-The endpoint is published in the deployment summary of the most recent
-[CD run](../../actions/workflows/cd.yml).
+Copilot Chat only calls MCP tools in **Agent** mode; in Ask mode the server is connected and
+never used. The tools picker in the chat input is where you confirm the four tools arrived.
+
+**Visual Studio** — the same JSON, in `.mcp.json` next to the `.sln`/`.slnx` (see
+[MCP servers in Visual Studio](https://learn.microsoft.com/visualstudio/ide/mcp-servers)).
+
+**The Copilot coding agent** on github.com is configured separately, in the repository's
+Settings → Copilot → Coding agent → MCP configuration, where entries take an explicit tool
+allow-list:
+
+```json
+{
+  "mcpServers": {
+    "hexmaster-coding-standards": {
+      "type": "http",
+      "url": "https://standards-mcp.hexmaster.nl",
+      "tools": ["*"]
+    }
+  }
+}
+```
+
+### Cursor
+
+`.cursor/mcp.json` in the repository, or `~/.cursor/mcp.json` for every project:
+
+```json
+{
+  "mcpServers": {
+    "hexmaster-coding-standards": {
+      "type": "http",
+      "url": "https://standards-mcp.hexmaster.nl"
+    }
+  }
+}
+```
+
+Cursor Settings → **Tools & MCP** lists the server once the file is saved; make sure it is
+enabled and showing its tools. Agent mode is what calls them.
+
+### Anything else
+
+Any client that speaks MCP over streamable HTTP can connect to the same URL — there is no
+stdio command to run, because there is nothing to install locally. If a client only supports
+stdio, put a generic remote-MCP proxy in front of it rather than asking for a variant here.
+
+The container app's own `*.azurecontainerapps.io` ingress hostname answers identically and is
+published in the deployment summary of the most recent
+[CD run](../../actions/workflows/cd.yml) — useful if the custom domain is ever in doubt.
+
+`GET https://standards-mcp.hexmaster.nl/health` returns `Healthy` once a replica has the
+catalog loaded, which is the quickest way to tell a cold start from a real problem before
+blaming your client's configuration.
 
 ### What the server offers
 
@@ -172,7 +269,7 @@ az bicep build --file infra/main.bicep
 | `tests/HexMaster.CodingStandards.Docs.Tests` | xUnit v3, offline, fixture-driven — everything about documents, tested with no host |
 | `tests/HexMaster.CodingStandards.Mcp.Tests` | The tool responses, and the two instruction texts — the connect-time one and `recommend_skills`' |
 | `tools/HexMaster.CodingStandards.CatalogValidator` | `validate-catalog`, run by CI and locally |
-| `infra/` | Bicep: Container Apps environment, container app (the registry already exists) |
+| `infra/` | Bicep: Container Apps environment, managed certificate, container app (the registry already exists) |
 | `openspec/` | Change proposals and capability specs |
 
 The dependency runs one way — `Mcp` → `Docs` — which is what keeps the document logic
