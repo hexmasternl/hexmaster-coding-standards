@@ -1,5 +1,9 @@
 <Solution>
-  <Project Path="HexMaster.CodingStandards.Docs/HexMaster.CodingStandards.Docs.csproj" Id="a323a75a-c3a9-4644-b5e6-ae3d70847327" />
-  <Project Path="HexMaster.CodingStandards.Mcp/HexMaster.CodingStandards.Mcp.csproj" Id="bece79f3-b6c0-4bc5-9718-d2cf17b4c5e4" />
-  <Project Path="Tests/HexMaster.CodingStandards.Tests/HexMaster.CodingStandards.Tests.csproj" Id="db07f3ab-bb55-4417-aa34-96ac49c09921" />
+  <Folder Name="/src/">
+    <Project Path="src/HexMaster.CodingStandards.Mcp/HexMaster.CodingStandards.Mcp.csproj" Id="bece79f3-b6c0-4bc5-9718-d2cf17b4c5e4" />
+    <Project Path="src/HexMaster.CodingStandards.Docs/HexMaster.CodingStandards.Docs.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HexMaster.CodingStandards.Docs.Tests/HexMaster.CodingStandards.Docs.Tests.csproj" />
+  </Folder>
 </Solution>
