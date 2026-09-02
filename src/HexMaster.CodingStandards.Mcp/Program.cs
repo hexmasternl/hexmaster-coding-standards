@@ -10,7 +10,7 @@ builder.Services
         // See https://csharp.sdk.modelcontextprotocol.io/concepts/transports/transports.html for details.
         options.Stateless = true;
     })
-    .WithTools<RandomNumberTools>();
+    ;
 
 var app = builder.Build();
 app.MapMcp();

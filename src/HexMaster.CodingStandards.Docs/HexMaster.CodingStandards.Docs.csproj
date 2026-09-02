@@ -1,9 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+  <!-- Owns every document concern: downloading the catalog and bodies from GitHub,
+       caching them, and serving retrieval / index / keyword search.
+
+       Deliberately references only Microsoft.Extensions.* abstractions - no ASP.NET Core
+       hosting types - so the whole document layer stays testable without a web host.
+       See the openspec design, "Three projects, solution at the repository root". -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="10.0.0" />
+  </ItemGroup>
 
 </Project>
