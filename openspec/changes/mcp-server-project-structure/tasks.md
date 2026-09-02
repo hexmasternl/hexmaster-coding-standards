@@ -88,4 +88,4 @@
 - [x] 10.1 Expand the root `README.md` with what the server is, its public endpoint, how to add a document under `/docs`, and how to point an MCP client at it
 - [x] 10.2 Reconcile `CLAUDE.md` against what was actually built, correcting any command, path, or behaviour that drifted during implementation
 - [x] 10.3 Add the ADR recording the runtime-download-versus-baked-image decision as the first real document under `docs/ADR/`, indexed via the `docs-index` skill
-- [ ] 10.4 Confirm a full green run: `dotnet build`, `dotnet test`, catalog validation, `docker build`, `az bicep build`, and a successful CD run
+- [ ] 10.4 Confirm a full green run: `dotnet build`, `dotnet test`, catalog validation, `docker build`, `az bicep build` all verified green; a successful CD run still pending Azure setup
