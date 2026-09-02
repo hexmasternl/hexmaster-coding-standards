@@ -62,9 +62,10 @@ All settings live under the `Documents` section and are overridable by environme
 | `Owner` | `hexmasternl` | GitHub account owning the content repository |
 | `Repository` | `hexmaster-coding-standards` | Content repository name |
 | `Ref` | `main` | Branch, tag, or commit to serve |
-| `RefreshInterval` | `00:15:00` | How often content is re-downloaded |
-| `RequestTimeout` | `00:00:30` | Per-download timeout |
-| `AccessToken` | none | Optional; raises GitHub rate limits and allows a private repository |
+| `CatalogCacheLifetime` | `00:30:00` | How long a loaded catalog is served before a read re-fetches it |
+| `BodyCacheLifetime` | `00:30:00` | How long a fetched document body is served from memory |
+| `RequestTimeout` | `00:00:30` | Per-request timeout |
+| `AccessToken` | none | Optional; raises the GitHub rate limit from 60/hour to 5,000/hour and allows a private repository |
 
 Never commit an access token. Locally, use `dotnet user-secrets set "Documents:AccessToken"
 "<token>"`; in Azure, supply it as a container app secret.

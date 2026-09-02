@@ -16,6 +16,9 @@ namespace HexMaster.CodingStandards.Docs.Documents;
 /// </remarks>
 public sealed class DocumentSet
 {
+    /// <summary>Shortest tag the substring fallback will run for.</summary>
+    private const int MinimumFallbackLength = 2;
+
     private DocumentSet(DocumentCatalog catalog, DateTimeOffset loadedAt)
     {
         Catalog = catalog;
@@ -115,6 +118,57 @@ public sealed class DocumentSet
             .Select(match => DocumentSummary.From(match.Entry))
             .ToArray();
     }
+
+    /// <summary>
+    /// Selects documents by an already-normalised tag: an exact pass, and a substring pass
+    /// only when the exact pass found nothing.
+    /// </summary>
+    /// <remarks>
+    /// The two passes are never merged. A query that hits a real tag is never diluted by
+    /// near misses - <c>ci</c> returns the <c>ci</c> documents and never reaches the
+    /// substring pass, where <c>cicd</c> would be waiting.
+    ///
+    /// Ordering comes from <see cref="DocumentCatalog"/>, which sorts on construction, so
+    /// the scan yields category-then-id order without sorting here and independently of the
+    /// order matches were found. Each entry is tested once, so a document carrying several
+    /// satisfying tags is returned once. Entries the parser rejected never reached the
+    /// catalog, so they cannot match.
+    /// </remarks>
+    /// <param name="normalisedTag">A trimmed, lowercased, non-empty tag.</param>
+    public TagSelection SelectByTag(string normalisedTag)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(normalisedTag);
+
+        // OrdinalIgnoreCase over an already-lowercased input is the lowercased-and-ordinal
+        // comparison the catalog's kebab-case tags need, without a ToLower per tag.
+        var exact = Matching(tag => tag.Equals(normalisedTag, StringComparison.OrdinalIgnoreCase));
+
+        if (exact.Count > 0)
+        {
+            return new TagSelection(normalisedTag, TagMatchKind.Exact, exact);
+        }
+
+        // One character is contained in nearly every kebab-case tag, so the fallback would
+        // return the whole catalog dressed up as a narrowing - the worst possible answer,
+        // because it looks like a result. Below two characters there is no signal.
+        if (normalisedTag.Length < MinimumFallbackLength)
+        {
+            return new TagSelection(normalisedTag, TagMatchKind.None, []);
+        }
+
+        var fallback = Matching(tag => tag.Contains(normalisedTag, StringComparison.OrdinalIgnoreCase));
+
+        return fallback.Count > 0
+            ? new TagSelection(normalisedTag, TagMatchKind.Fallback, fallback)
+            : new TagSelection(normalisedTag, TagMatchKind.None, []);
+    }
+
+    /// <summary>Every document with at least one tag satisfying the predicate, in catalog order.</summary>
+    private IReadOnlyList<DocumentSummary> Matching(Func<string, bool> tagPredicate) =>
+        Catalog.Entries
+            .Where(entry => entry.Tags.Any(tagPredicate))
+            .Select(DocumentSummary.From)
+            .ToArray();
 
     /// <summary>
     /// How well an entry matches: a title hit outranks a tag hit, which outranks a

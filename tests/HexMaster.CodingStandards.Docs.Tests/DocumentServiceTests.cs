@@ -13,13 +13,13 @@ public class DocumentServiceTests
     private const string StructurePath = "docs/Structures/a-structure.md";
 
     [Fact]
-    public void ReportsNotReadyBeforeAnyCatalogHasLoaded()
+    public async Task ReportsNotReadyBeforeAnyCatalogHasLoaded()
     {
         var context = new ServiceContext();
 
         context.Service.IsReady.ShouldBeFalse();
-        context.Service.GetIndex().Outcome.ShouldBe(DocumentOutcome.NotReady);
-        context.Service.Search("anything").Outcome.ShouldBe(DocumentOutcome.NotReady);
+        (await context.Service.GetIndexAsync(TestContext.Current.CancellationToken)).Outcome.ShouldBe(DocumentOutcome.NotReady);
+        (await context.Service.SearchAsync("anything", TestContext.Current.CancellationToken)).Outcome.ShouldBe(DocumentOutcome.NotReady);
     }
 
     [Fact]
@@ -34,11 +34,11 @@ public class DocumentServiceTests
     }
 
     [Fact]
-    public void ListsEveryDocumentWithMetadataAndNoBodies()
+    public async Task ListsEveryDocumentWithMetadataAndNoBodies()
     {
         var context = new ServiceContext().WithLoadedCatalog();
 
-        var result = context.Service.GetIndex();
+        var result = (await context.Service.GetIndexAsync(TestContext.Current.CancellationToken));
 
         result.IsSuccess.ShouldBeTrue();
         result.Value!.Count.ShouldBe(3);
@@ -55,20 +55,20 @@ public class DocumentServiceTests
     }
 
     [Fact]
-    public void OrdersTheIndexByCategoryThenId()
+    public async Task OrdersTheIndexByCategoryThenId()
     {
         var context = new ServiceContext().WithLoadedCatalog();
 
-        context.Service.GetIndex().Value!.Select(summary => summary.Id)
+        (await context.Service.GetIndexAsync(TestContext.Current.CancellationToken)).Value!.Select(summary => summary.Id)
             .ShouldBe(["a-decision", "a-design", "a-structure"]);
     }
 
     [Fact]
-    public void ReturnsAnEmptyIndexForAnEmptyButLoadedCatalog()
+    public async Task ReturnsAnEmptyIndexForAnEmptyButLoadedCatalog()
     {
         var context = new ServiceContext().WithCatalog("""{ "documents": [] }""");
 
-        var result = context.Service.GetIndex();
+        var result = (await context.Service.GetIndexAsync(TestContext.Current.CancellationToken));
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.ShouldBeEmpty();
@@ -197,7 +197,7 @@ public class DocumentServiceTests
 
         context.Github.WithBody(DecisionPath, "# Good\n");
 
-        context.Service.GetIndex().Value!.Count.ShouldBe(2);
+        (await context.Service.GetIndexAsync(TestContext.Current.CancellationToken)).Value!.Count.ShouldBe(2);
         (await context.Service.GetDocumentAsync("bad", TestContext.Current.CancellationToken))
             .Outcome.ShouldBe(DocumentOutcome.Unavailable);
         (await context.Service.GetDocumentAsync("good", TestContext.Current.CancellationToken))
@@ -252,28 +252,28 @@ public class DocumentServiceTests
     }
 
     [Fact]
-    public void SearchesTitleTagsAndDescription()
+    public async Task SearchesTitleTagsAndDescription()
     {
         var context = new ServiceContext().WithLoadedCatalog();
 
-        context.Service.Search("decision").Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
-        context.Service.Search("performance").Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
-        context.Service.Search("folders").Value!.Select(summary => summary.Id).ShouldBe(["a-structure"]);
+        (await context.Service.SearchAsync("decision", TestContext.Current.CancellationToken)).Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
+        (await context.Service.SearchAsync("performance", TestContext.Current.CancellationToken)).Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
+        (await context.Service.SearchAsync("folders", TestContext.Current.CancellationToken)).Value!.Select(summary => summary.Id).ShouldBe(["a-structure"]);
     }
 
     [Fact]
-    public void SearchDoesNotReachForBodies()
+    public async Task SearchDoesNotReachForBodies()
     {
         // Bodies are fetched per document and are not resident, so search is metadata-only.
         // Searching them would mean fetching the whole corpus on the first search.
         var context = new ServiceContext().WithLoadedCatalog();
 
-        context.Service.Search("cache").Value!.ShouldBeEmpty();
+        (await context.Service.SearchAsync("cache", TestContext.Current.CancellationToken)).Value!.ShouldBeEmpty();
         context.Github.TotalBodyCalls.ShouldBe(0);
     }
 
     [Fact]
-    public void RanksTitleMatchesAboveTagAndDescriptionMatches()
+    public async Task RanksTitleMatchesAboveTagAndDescriptionMatches()
     {
         var context = new ServiceContext().WithCatalog(CatalogJson(
             EntryJson("described", "Unrelated", "ADR", "docs/ADR/described.md",
@@ -281,7 +281,7 @@ public class DocumentServiceTests
             EntryJson("tagged", "Also unrelated", "ADR", "docs/ADR/tagged.md", tags: "\"telemetry\""),
             EntryJson("titled", "Telemetry", "ADR", "docs/ADR/titled.md")));
 
-        context.Service.Search("telemetry").Value!.Select(summary => summary.Id)
+        (await context.Service.SearchAsync("telemetry", TestContext.Current.CancellationToken)).Value!.Select(summary => summary.Id)
             .ShouldBe(["titled", "tagged", "described"]);
     }
 
@@ -289,19 +289,19 @@ public class DocumentServiceTests
     [InlineData("DECISION")]
     [InlineData("Decision")]
     [InlineData("dEcIsIoN")]
-    public void SearchIgnoresCase(string keyword)
+    public async Task SearchIgnoresCase(string keyword)
     {
         var context = new ServiceContext().WithLoadedCatalog();
 
-        context.Service.Search(keyword).Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
+        (await context.Service.SearchAsync(keyword, TestContext.Current.CancellationToken)).Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
     }
 
     [Fact]
-    public void AnEmptySearchResultIsSuccessNotFailure()
+    public async Task AnEmptySearchResultIsSuccessNotFailure()
     {
         var context = new ServiceContext().WithLoadedCatalog();
 
-        var result = context.Service.Search("nothing-matches-this");
+        var result = (await context.Service.SearchAsync("nothing-matches-this", TestContext.Current.CancellationToken));
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.ShouldBeEmpty();
@@ -311,26 +311,26 @@ public class DocumentServiceTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("\t\n")]
-    public void RejectsABlankKeywordRatherThanReturningEverything(string keyword)
+    public async Task RejectsABlankKeywordRatherThanReturningEverything(string keyword)
     {
         var context = new ServiceContext().WithLoadedCatalog();
 
-        var result = context.Service.Search(keyword);
+        var result = (await context.Service.SearchAsync(keyword, TestContext.Current.CancellationToken));
 
         result.Outcome.ShouldBe(DocumentOutcome.InvalidRequest);
         result.Value.ShouldBeNull();
     }
 
     [Fact]
-    public void SwapsTheCachedCatalogAtomically()
+    public async Task SwapsTheCachedCatalogAtomically()
     {
         var context = new ServiceContext().WithLoadedCatalog();
 
-        var before = context.Service.GetIndex().Value!;
+        var before = (await context.Service.GetIndexAsync(TestContext.Current.CancellationToken)).Value!;
 
         context.ReplaceCatalog(CatalogJson(EntryJson("new-one", "New one", "ADR", "docs/ADR/new.md")));
 
-        var after = context.Service.GetIndex().Value!;
+        var after = (await context.Service.GetIndexAsync(TestContext.Current.CancellationToken)).Value!;
 
         // The snapshot a reader already holds is unaffected by the swap.
         before.Select(summary => summary.Id).ShouldBe(["a-decision", "a-design", "a-structure"]);
@@ -369,13 +369,25 @@ public class DocumentServiceTests
             Time = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-02T10:00:00Z", null));
             CatalogCache = new DocumentSetCache();
 
-            var bodyCache = new DocumentBodyCache(
-                Github,
-                new StaticOptionsMonitor<GitHubContentOptions>(new GitHubContentOptions()),
-                Time);
+            var options = new StaticOptionsMonitor<GitHubContentOptions>(new GitHubContentOptions());
+            var bodyCache = new DocumentBodyCache(Github, options, Time);
 
-            Service = new DocumentService(CatalogCache, bodyCache, NullLogger<DocumentService>.Instance);
+            Loader = new CatalogLoader(
+                Github,
+                CatalogCache,
+                bodyCache,
+                options,
+                Time,
+                NullLogger<CatalogLoader>.Instance);
+
+            Service = new DocumentService(
+                CatalogCache,
+                bodyCache,
+                Loader,
+                NullLogger<DocumentService>.Instance);
         }
+
+        public CatalogLoader Loader { get; }
 
         public FakeGitHubContentClient Github { get; }
 

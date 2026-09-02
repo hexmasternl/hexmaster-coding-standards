@@ -13,10 +13,24 @@ internal sealed class FakeGitHubContentClient : IGitHubContentClient
     private readonly Queue<Func<string>> _catalogOutcomes = new();
     private readonly ConcurrentDictionary<string, Func<ContentFetchResult>> _bodies = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, int> _bodyCalls = new(StringComparer.Ordinal);
+    private readonly Lock _catalogLock = new();
     private TaskCompletionSource? _bodyGate;
+    private TaskCompletionSource? _catalogGate;
+    private int _catalogCalls;
+    private int _catalogInFlight;
+    private int _maxCatalogInFlight;
 
     /// <summary>How many times the catalog was requested.</summary>
-    public int CatalogCalls { get; private set; }
+    public int CatalogCalls => Volatile.Read(ref _catalogCalls);
+
+    /// <summary>
+    /// The most catalog fetches that were ever in flight at the same moment.
+    /// </summary>
+    /// <remarks>
+    /// This is what single-flight actually means, and unlike a total it does not depend on
+    /// how many callers happened to arrive before a gate was released.
+    /// </remarks>
+    public int MaxConcurrentCatalogCalls => Volatile.Read(ref _maxCatalogInFlight);
 
     /// <summary>Total body requests across every path.</summary>
     public int TotalBodyCalls => _bodyCalls.Values.Sum();
@@ -69,18 +83,58 @@ internal sealed class FakeGitHubContentClient : IGitHubContentClient
     /// <summary>Releases gated body fetches.</summary>
     public void ReleaseBodies() => _bodyGate?.TrySetResult();
 
-    /// <inheritdoc />
-    public Task<string> GetCatalogAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Holds every catalog fetch until <see cref="ReleaseCatalog"/> is called, so a test can
+    /// get several catalog requests genuinely in flight at once.
+    /// </summary>
+    public FakeGitHubContentClient GateCatalog()
     {
-        CatalogCalls++;
+        _catalogGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        return this;
+    }
 
-        if (_catalogOutcomes.Count == 0)
+    /// <summary>Releases gated catalog fetches.</summary>
+    public void ReleaseCatalog() => _catalogGate?.TrySetResult();
+
+    /// <inheritdoc />
+    public async Task<string> GetCatalogAsync(CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _catalogCalls);
+
+        var inFlight = Interlocked.Increment(ref _catalogInFlight);
+
+        int observed;
+        while (inFlight > (observed = Volatile.Read(ref _maxCatalogInFlight)))
         {
-            throw new ContentUnavailableException("No catalog outcome was queued for this call.");
+            Interlocked.CompareExchange(ref _maxCatalogInFlight, inFlight, observed);
         }
 
-        var outcome = _catalogOutcomes.Count == 1 ? _catalogOutcomes.Peek() : _catalogOutcomes.Dequeue();
-        return Task.FromResult(outcome());
+        try
+        {
+            if (_catalogGate is not null)
+            {
+                await _catalogGate.Task.ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _catalogInFlight);
+        }
+
+        Func<string> outcome;
+
+        // The queue is not thread-safe and concurrency tests drive this from several tasks.
+        lock (_catalogLock)
+        {
+            if (_catalogOutcomes.Count == 0)
+            {
+                throw new ContentUnavailableException("No catalog outcome was queued for this call.");
+            }
+
+            outcome = _catalogOutcomes.Count == 1 ? _catalogOutcomes.Peek() : _catalogOutcomes.Dequeue();
+        }
+
+        return outcome();
     }
 
     /// <inheritdoc />

@@ -40,14 +40,13 @@ public sealed class CatalogLoader : BackgroundService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CatalogLoader> _logger;
 
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Lock _sync = new();
 
-    // Counts load attempts, successful or not. A caller that queued behind an in-flight
-    // attempt compares this before and after waiting: if an attempt completed while it
-    // waited, it takes that outcome rather than firing its own. Without it, a burst arriving
-    // on an expired cache during a GitHub outage would serialise into one failing fetch per
-    // caller, each paying the request timeout.
-    private long _attempts;
+    // The load currently running, if any. Callers arriving on an expired cache await this
+    // rather than starting their own, so a burst produces one fetch and not one per caller -
+    // which matters most during an outage, where the alternative is every caller serially
+    // paying the request timeout.
+    private Task? _inFlight;
 
     /// <summary>Creates the loader.</summary>
     public CatalogLoader(
@@ -76,38 +75,59 @@ public sealed class CatalogLoader : BackgroundService
     /// than it hoped. A failure with nothing cached leaves the cache empty, and the caller
     /// reports not-ready.
     /// </remarks>
-    public async Task EnsureCurrentAsync(CancellationToken cancellationToken)
+    public Task EnsureCurrentAsync(CancellationToken cancellationToken)
     {
         var lifetime = _options.CurrentValue.CatalogCacheLifetime;
 
         if (!_cache.IsExpired(_timeProvider.GetUtcNow(), lifetime))
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        var attemptsBeforeWaiting = Interlocked.Read(ref _attempts);
-
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        try
+        lock (_sync)
         {
-            // Somebody else attempted while we queued. Their outcome is ours: either they
-            // refreshed the cache, or they failed and we would fail the same way.
-            if (Interlocked.Read(ref _attempts) != attemptsBeforeWaiting)
-            {
-                return;
-            }
-
+            // Re-checked under the lock: the load we would have started may have completed
+            // between the check above and here.
             if (!_cache.IsExpired(_timeProvider.GetUtcNow(), lifetime))
             {
-                return;
+                return Task.CompletedTask;
             }
 
-            await LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (_inFlight is not null)
+            {
+                return _inFlight;
+            }
+
+            // Whoever gets here first starts the load; everyone else awaits that same task,
+            // so a burst costs one fetch whether it succeeds or fails. Once it finishes the
+            // field is cleared, and a later caller that still finds the cache expired - which
+            // is what a failed load leaves behind - starts a fresh one.
+            var load = LoadAndClearAsync();
+
+            // A load that finished synchronously has already run its cleanup - which, being
+            // reentrant on this lock, cleared a field we had not assigned yet. Storing it now
+            // would park a completed task here forever and suppress every later reload.
+            _inFlight = load.IsCompleted ? null : load;
+
+            return load;
         }
-        finally
+
+        // Deliberately not the caller's token. The load is shared, so honouring one caller's
+        // cancellation would abort a fetch the others are waiting on; the HTTP client's own
+        // timeout is what bounds it.
+        async Task LoadAndClearAsync()
         {
-            _gate.Release();
+            try
+            {
+                await LoadAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            finally
+            {
+                lock (_sync)
+                {
+                    _inFlight = null;
+                }
+            }
         }
     }
 
@@ -117,8 +137,6 @@ public sealed class CatalogLoader : BackgroundService
     /// </summary>
     public async Task<bool> LoadAsync(CancellationToken cancellationToken)
     {
-        Interlocked.Increment(ref _attempts);
-
         try
         {
             var catalogJson = await _client.GetCatalogAsync(cancellationToken).ConfigureAwait(false);
@@ -172,12 +190,5 @@ public sealed class CatalogLoader : BackgroundService
         {
             // Shutting down before the first load finished.
         }
-    }
-
-    /// <inheritdoc />
-    public override void Dispose()
-    {
-        _gate.Dispose();
-        base.Dispose();
     }
 }

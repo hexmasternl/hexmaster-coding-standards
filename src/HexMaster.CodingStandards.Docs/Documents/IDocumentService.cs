@@ -63,6 +63,40 @@ public sealed record DocumentListEntry(
     }
 }
 
+/// <summary>
+/// How a tag selection found the documents it returned.
+/// </summary>
+/// <remarks>
+/// Carried on the result rather than on each entry: match quality is a property of the
+/// selection, not of a document, and a caller that cannot tell an exact hit from an
+/// approximate one will treat the tag it guessed as one the catalog actually uses.
+/// </remarks>
+public enum TagMatchKind
+{
+    /// <summary>At least one document carries the requested tag, and only those are returned.</summary>
+    Exact,
+
+    /// <summary>
+    /// No document carries the requested tag, so documents having a tag that contains it are
+    /// returned instead.
+    /// </summary>
+    Fallback,
+
+    /// <summary>Neither pass matched. A successful, empty answer - nothing is tagged that way.</summary>
+    None
+}
+
+/// <summary>
+/// The documents a tag selected, together with how they were found.
+/// </summary>
+/// <param name="Tag">The normalised tag that was selected on - trimmed and lowercased.</param>
+/// <param name="Match">Whether the documents carry the tag exactly, approximately, or at all.</param>
+/// <param name="Documents">The matching documents, ordered by category then id; empty when nothing matched.</param>
+public sealed record TagSelection(
+    string Tag,
+    TagMatchKind Match,
+    IReadOnlyList<DocumentSummary> Documents);
+
 /// <summary>A document's metadata together with its full markdown body.</summary>
 /// <param name="Summary">The document's metadata.</param>
 /// <param name="Markdown">The document's full markdown text.</param>
@@ -173,4 +207,15 @@ public interface IDocumentService
     /// search. See the <c>docs-serve-document-by-id</c> design.
     /// </remarks>
     Task<DocumentResult<IReadOnlyList<DocumentSummary>>> SearchAsync(string keyword, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Selects the documents carrying a tag, exactly if any do and approximately if none do.
+    /// </summary>
+    /// <remarks>
+    /// The tag is trimmed and lowercased before matching. Documents whose tag equals it are
+    /// returned; only when none does are documents whose tag merely contains it returned,
+    /// and only when the tag is at least two characters. Reads catalog metadata alone - no
+    /// GitHub request, no document body. Entries are ordered by category then id.
+    /// </remarks>
+    Task<DocumentResult<TagSelection>> FindByTagAsync(string tag, CancellationToken cancellationToken);
 }
