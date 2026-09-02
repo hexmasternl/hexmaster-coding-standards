@@ -1,4 +1,5 @@
 using HexMaster.CodingStandards.Docs;
+using HexMaster.CodingStandards.Mcp;
 using HexMaster.CodingStandards.Mcp.Tools;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
@@ -37,6 +38,10 @@ var app = builder.Build();
 // Container Apps ingress terminates TLS and forwards plain HTTP, so UseHttpsRedirection()
 // would see an HTTP request and redirect - a loop, or a broken client. HTTPS is enforced at
 // the edge instead (ingress allowInsecure: false).
+
+// Before routing on purpose: MapMcp() owns GET / as well, so a page served from a mapped
+// route would be an ambiguous match. See LandingPage for how the two are told apart.
+app.UseLandingPage();
 
 app.MapMcp();
 
