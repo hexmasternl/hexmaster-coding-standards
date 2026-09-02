@@ -1,4 +1,5 @@
 using HexMaster.CodingStandards.Docs;
+using HexMaster.CodingStandards.Mcp.Tools;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,7 +17,10 @@ builder.Services
         tags: ["ready"]);
 
 builder.Services
-    .AddMcpServer()
+    // The one thing the server says without being asked. Clients send it to the model as a
+    // system message on connect, which is what makes the skill bootstrap fire at all - a
+    // tool description is only read once a model is already looking for a tool.
+    .AddMcpServer(options => options.ServerInstructions = ServerInstructions.Text)
     .WithHttpTransport(options =>
     {
         // Stateless is load-bearing, not a default worth changing. The container app runs
