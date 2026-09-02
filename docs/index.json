@@ -1,6 +1,45 @@
 {
   "documents": [
     {
+      "id": "adopt-aspire-for-aspnet-web-services",
+      "title": "ADR 0003: Strong Recommendation to Adopt .NET Aspire for ASP.NET Web Services",
+      "description": "Strongly recommends, without mandating, that web-facing ASP.NET services orchestrate their dependencies through an Aspire AppHost and take telemetry, health checks, resilience, and service discovery from Aspire service defaults before writing custom equivalents, while leaving domain-only libraries and console tools free to opt out.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": [
+        "aspire",
+        "orchestration",
+        "observability",
+        "aspnet",
+        "service-discovery"
+      ],
+      "path": "docs/ADR/0003-recommend-aspire-for-aspnet-projects.md"
+    },
+    {
+      "id": "adopt-dotnet-10",
+      "title": "ADR 0001: Adopt .NET 10 as Target Framework",
+      "description": "Fixes net10.0 as the baseline target framework for every project in and governed by this repository, on the grounds that it is the current LTS release with three years of support, and defers reassessment to a superseding ADR when .NET 12 LTS lands.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": ["dotnet", "runtime", "lts", "csharp"],
+      "path": "docs/ADR/0001-adopt-dotnet-10.md"
+    },
+    {
+      "id": "adopt-opentelemetry-for-observability",
+      "title": "ADR 0008: Adopt OpenTelemetry for Comprehensive Observability",
+      "description": "Requires backend services to instrument traces, metrics, and logs through OpenTelemetry rather than per-pillar vendor SDKs, listing the operations that must be covered automatically and the business spans that must be added by hand, so observability backends can be swapped without touching code.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": [
+        "opentelemetry",
+        "observability",
+        "tracing",
+        "metrics",
+        "logging"
+      ],
+      "path": "docs/ADR/0008-adopt-opentelemetry-for-observability.md"
+    },
+    {
       "id": "adr-template",
       "title": "ADR template",
       "description": "The expected shape of an architecture decision record: context that stands on its own, the decision in the present tense with its rationale, alternatives with the specific reason each lost, consequences including knowingly accepted costs, and a status history recorded as transitions.",
@@ -10,6 +49,85 @@
       "path": "docs/ADR/0000-adr-template.md"
     },
     {
+      "id": "centralized-frontend-styling-variables",
+      "title": "ADR 0006: Centralized Frontend Styling Variables",
+      "description": "Requires every colour, font, size, and spacing value in a frontend application to be declared as a named token in one central SASS variables file, so rebranding and theming become edits to one file rather than a hunt through component styles.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": ["frontend", "styling", "sass", "design-tokens", "theming"],
+      "path": "docs/ADR/0006-centralized-frontend-styling-variables.md"
+    },
+    {
+      "id": "cqrs-for-aspnet-apis",
+      "title": "ADR 0004: Recommendation to Implement CQRS for ASP.NET API Projects",
+      "description": "Recommends a lightweight CQRS style for ASP.NET APIs in which requests map onto command or query records handled by injected handlers that know nothing of HTTP, with DTO records as handler output and 202 Accepted for work that returns no value.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": ["cqrs", "aspnet", "patterns", "records"],
+      "path": "docs/ADR/0004-cqrs-recommendation-for-aspnet-api.md"
+    },
+    {
+      "id": "feature-slices-within-modules",
+      "title": "ADR 0009: Feature Slices Within Module Projects",
+      "description": "Settles how a feature is physically added to a module: the Features sub-namespace layout, where API payload records live versus the module's public Abstractions contracts, and how a Minimal API endpoint maps an incoming payload onto a command or query and dispatches it.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": [
+        "feature-slices",
+        "modular-monolith",
+        "cqrs",
+        "minimal-api",
+        "project-layout"
+      ],
+      "path": "docs/ADR/0009-feature-slices-module-structure.md"
+    },
+    {
+      "id": "minimal-apis-over-controllers",
+      "title": "ADR 0005: Recommend Minimal APIs Over Controller-Based APIs",
+      "description": "Makes Minimal APIs the default for new ASP.NET API projects now that they have reached parity with controllers, pairs them with built-in OpenAPI generation and Scalar instead of Swashbuckle, and explicitly allows existing controller-based projects to stay as they are.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": ["minimal-api", "aspnet", "openapi", "patterns"],
+      "path": "docs/ADR/0005-minimal-apis-over-controllers.md"
+    },
+    {
+      "id": "modular-monolith-project-structure",
+      "title": "ADR 0002: Modular Monolith Project Structure",
+      "description": "Adopts a modular monolith in which each bounded context owns a folder of projects behind an Abstractions contract, defines the src layout and project naming conventions, and forbids cross-module entity sharing so modules can later be extracted without a premature microservice split.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": [
+        "modular-monolith",
+        "project-layout",
+        "modularity",
+        "clean-architecture"
+      ],
+      "path": "docs/ADR/0002-modular-monolith-structure.md"
+    },
+    {
+      "id": "resolve-subject-id-to-internal-user-id",
+      "title": "ADR 0010: Resolve External Subject ID to Internal User ID at the API Boundary",
+      "description": "Requires an identity provider's sub claim to be exchanged for an internal user id at the API boundary before any command or query is dispatched, so domain entities, events, and projections never store a provider-controlled identifier and switching providers stays a boundary concern.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": ["identity", "authentication", "security", "aspnet", "users"],
+      "path": "docs/ADR/0010-user-identity-resolution.md"
+    },
+    {
+      "id": "vertical-slice-architecture",
+      "title": "ADR 0007: Adopt Vertical Slice Architecture for Feature Organization",
+      "description": "Requires application code to be grouped by feature rather than by technical layer, with each slice holding its own request models, handler, validation, domain logic, and data access, so a feature can be understood, changed, and deleted in one place.",
+      "category": "ADR",
+      "status": "accepted",
+      "tags": [
+        "vertical-slice",
+        "feature-organization",
+        "clean-architecture",
+        "patterns"
+      ],
+      "path": "docs/ADR/0007-vertical-slice-architecture.md"
+    },
+    {
       "id": "design-template",
       "title": "Design template",
       "description": "The expected shape of a coding design document: the problem it addresses, the pattern stated concretely enough to apply without asking, the reasoning that keeps it from being cargo-culted, the boundary where it should not be applied, and paired good and bad examples.",
@@ -17,6 +135,56 @@
       "status": "draft",
       "tags": ["template", "authoring", "patterns"],
       "path": "docs/Designs/0000-design-template.md"
+    },
+    {
+      "id": "modular-solution-structure",
+      "title": "Modular Solution Structure Design",
+      "description": "Lays out the recommended solution and filesystem structure for web-enabled .NET solutions: how modules and domains are organised, where Aspire orchestration projects sit, the naming conventions across layers, and when a module is ready to become an independent service.",
+      "category": "Design",
+      "status": "accepted",
+      "tags": [
+        "modular-monolith",
+        "project-layout",
+        "aspire",
+        "naming-conventions"
+      ],
+      "path": "docs/Designs/modular-solution-structure.md"
+    },
+    {
+      "id": "pragmatic-domain-driven-design",
+      "title": "Pragmatic Domain-Driven Design Approach",
+      "description": "Charts a middle course between anemic models and value-object ceremony: business operations go through a rich domain model that cannot be put into an invalid state, while primitives stay primitive unless wrapping them earns its keep.",
+      "category": "Design",
+      "status": "draft",
+      "tags": ["ddd", "domain-model", "value-objects", "patterns"],
+      "path": "docs/Designs/pragmatic-domain-driven-design.md"
+    },
+    {
+      "id": "unit-testing-with-xunit-moq-bogus",
+      "title": "Recommendation: Unit Testing with xUnit, Moq, and Bogus",
+      "description": "Fixes the unit-testing stack at xUnit with Moq for collaborators and Bogus for test data behind factory or builder methods, sets a floor of 80 percent coverage for Core and Server, and asks that any further test library be justified by an ADR.",
+      "category": "Design",
+      "status": "accepted",
+      "tags": ["testing", "xunit", "moq", "bogus"],
+      "path": "docs/Designs/unit-testing-xunit-moq-bogus.md"
+    },
+    {
+      "id": "feature-slices-module-structure",
+      "title": "Structure: Feature Slices Module Structure",
+      "description": "A copy-paste scaffold for a module built from feature slices, showing the two core projects, the Features sub-namespace per feature, and where DTOs and port interfaces belong, so the conventions decided in ADR 0009 can be applied without rereading it.",
+      "category": "Structure",
+      "status": "accepted",
+      "tags": ["feature-slices", "modular-monolith", "cqrs", "project-layout"],
+      "path": "docs/Structures/feature-slices-module-structure.md"
+    },
+    {
+      "id": "minimal-api-endpoint-organization",
+      "title": "Structure: Minimal API Endpoint Organization",
+      "description": "Puts each base route in its own source file that exposes a static extension method over a route group, with a file-per-route naming convention, so endpoint registration stays navigable and Program.cs only composes.",
+      "category": "Structure",
+      "status": "accepted",
+      "tags": ["minimal-api", "aspnet", "project-layout", "naming-conventions"],
+      "path": "docs/Structures/minimal-api-endpoint-organization.md"
     },
     {
       "id": "structure-template",

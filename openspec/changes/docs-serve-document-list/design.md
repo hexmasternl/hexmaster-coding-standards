@@ -45,13 +45,17 @@ The catalog cache window is 30 minutes, replacing the 15-minute refresh interval
 
 *Trade-off:* a newly published standard takes up to 30 minutes to appear in a listing, up from 15. Accepted deliberately — standards change on a scale of days, and the cost of the shorter window is paid on every cold start.
 
-### The cache is time-to-live, not a background refresh
+### One eager load at startup, then time-to-live — not a recurring background refresh
 
-The catalog is fetched lazily: the first request after the window expires triggers the fetch, rather than a background service refreshing on a timer.
+The catalog is loaded once when the process starts, and thereafter expires lazily: the first request after the window elapses triggers the fetch. What goes away is the *recurring timer*, not the initial load.
 
-*Why:* under scale-to-zero a background timer mostly refreshes content nobody is asking for, and a replica that lives for one request would fetch twice. Lazy expiry ties the request volume to actual use. It also removes the background service, whose failure mode (silent, and only visible in logs) is worse than a failure the requesting caller sees.
+*Why drop the timer:* under scale-to-zero a periodic refresh mostly re-fetches content nobody is asking for, and a replica that lives for one request would fetch twice. Lazy expiry ties request volume to actual use, and it turns a failure that was silent and visible only in logs into one the requesting caller sees.
 
-*Consequence:* the request that finds the cache expired pays the fetch latency. One small file over HTTPS, so this is tens of milliseconds, not the seconds an archive download cost.
+*Why keep the startup load:* purely lazy loading deadlocks the deployment. `infra/modules/containerApp.bicep` points both a **Readiness** and a **Liveness** probe at `/health`, and `/health` reports unhealthy until a catalog has loaded — which `mcp-server-host` requires, because a replica that cannot serve content must not receive traffic. With no startup load, readiness fails, so no request is routed, so the catalog never loads: the replica is never ready and the liveness probe restarts it on a loop. Under `minReplicas: 0` every scale-from-zero would hit this.
+
+The startup load costs exactly the fetch the first request would have paid anyway, moved earlier — one small file. It preserves the health contract, keeps cold-start latency off the first caller, and still satisfies the property the lazy design was after: once running, an idle replica issues no further fetches until someone asks.
+
+*Consequence:* a request that finds the cache expired pays the fetch latency. One small file over HTTPS, so tens of milliseconds, not the seconds an archive download cost.
 
 *Concurrency:* concurrent callers arriving on an expired cache must not each fire a fetch. One fetch runs and the others await its result; if it fails and a previously loaded catalog exists, they are all served the stale catalog.
 

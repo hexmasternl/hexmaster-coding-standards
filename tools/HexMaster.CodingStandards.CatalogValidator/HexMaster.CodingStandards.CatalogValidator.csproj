@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Validates docs/index.json against the docs tree and exits non-zero on any
+       disagreement. CI runs this as its own step so a drifted catalog fails review rather
+       than reaching main; contributors can run it locally the same way. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>validate-catalog</AssemblyName>
+    <RootNamespace>HexMaster.CodingStandards.CatalogValidator</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\HexMaster.CodingStandards.Docs\HexMaster.CodingStandards.Docs.csproj" />
+  </ItemGroup>
+
+</Project>
