@@ -62,6 +62,20 @@ public sealed class DocumentService : IDocumentService
     }
 
     /// <inheritdoc />
+    public async Task<DocumentResult<IReadOnlyList<DocumentSummary>>> GetSkillCandidatesAsync(
+        CancellationToken cancellationToken)
+    {
+        var set = await CurrentSetAsync(cancellationToken).ConfigureAwait(false);
+
+        // A catalog where every standard is retired yields an empty set, and that is a
+        // success: "there is nothing worth turning into a skill" is an answer. Only a
+        // catalog that never loaded is a failure, because then the answer is unknown.
+        return set is null
+            ? DocumentResult<IReadOnlyList<DocumentSummary>>.NotReady(NotReadyMessage)
+            : DocumentResult<IReadOnlyList<DocumentSummary>>.Success(set.SkillCandidates());
+    }
+
+    /// <inheritdoc />
     public async Task<DocumentResult<Document>> GetDocumentAsync(string id, CancellationToken cancellationToken)
     {
         var set = await CurrentSetAsync(cancellationToken).ConfigureAwait(false);

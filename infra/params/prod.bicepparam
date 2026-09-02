@@ -4,6 +4,9 @@ param applicationName = 'hexmaster-codingstandards'
 param environmentName = 'prod'
 param location = 'swedencentral'
 
+// The template is subscription scoped and creates this resource group itself.
+param resourceGroupName = 'rg-hexmaster-codingstandards-prod'
+
 // Bounds the cost blast radius on a public, unauthenticated endpoint.
 param maxReplicas = 3
 

@@ -1,12 +1,14 @@
-targetScope = 'resourceGroup'
+targetScope = 'subscription'
 
 metadata description = '''
-Infrastructure for the HexMaster coding standards MCP server: a Container Apps environment
-and a container app that scales to zero.
+Infrastructure for the HexMaster coding standards MCP server: a resource group holding a
+Container Apps environment and a container app that scales to zero.
 
-The container registry is not deployed here. An existing registry is used, and the pipeline
-passes its login server and credentials in, so a release is: build and push the image to
-that registry, then deploy this template once pinned to the pushed image.
+The deployment is subscription scoped so it creates its own resource group, which makes a
+release a single deployment into a bare subscription. The container registry is not
+deployed here. An existing registry is used, and the pipeline passes its login server and
+credentials in, so a release is: build and push the image to that registry, then deploy
+this template once pinned to the pushed image.
 '''
 
 @description('Short application name used to derive resource names.')
@@ -18,8 +20,13 @@ param applicationName string = 'hexmaster-codingstandards'
 @allowed(['dev', 'test', 'prod'])
 param environmentName string
 
-@description('Azure region for every resource.')
-param location string = resourceGroup().location
+@description('Resource group this deployment creates and deploys into.')
+@minLength(1)
+@maxLength(90)
+param resourceGroupName string = 'rg-${applicationName}-${environmentName}'
+
+@description('Azure region for the resource group and every resource in it.')
+param location string = deployment().location
 
 @description('''
 Container image to run. Defaults to a publicly pullable placeholder so a deployment without
@@ -64,7 +71,15 @@ var tags = {
   'managed-by': 'bicep'
 }
 
+// Not named `resourceGroup`, which would shadow the function of the same name.
+resource group 'Microsoft.Resources/resourceGroups@2024-07-01' = {
+  name: resourceGroupName
+  location: location
+  tags: tags
+}
+
 module environment 'modules/environment.bicep' = {
+  scope: group
   name: 'environment'
   params: {
     name: '${applicationName}-${environmentName}-env'
@@ -75,6 +90,7 @@ module environment 'modules/environment.bicep' = {
 }
 
 module containerApp 'modules/containerApp.bicep' = {
+  scope: group
   name: 'containerApp'
   params: {
     name: '${applicationName}-${environmentName}'
@@ -92,6 +108,9 @@ module containerApp 'modules/containerApp.bicep' = {
     documentsCatalogCacheLifetime: documentsCatalogCacheLifetime
   }
 }
+
+@description('Resource group everything was deployed into.')
+output resourceGroupName string = group.name
 
 @description('Public HTTPS endpoint of the MCP server.')
 output url string = containerApp.outputs.url

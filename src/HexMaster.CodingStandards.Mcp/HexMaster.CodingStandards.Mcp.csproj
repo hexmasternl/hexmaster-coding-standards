@@ -14,6 +14,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The tool classes are internal, as nothing outside the host has any business
+         constructing one. The host's own test project is the exception: the instruction text
+         a tool returns is an interface, and it can only be asserted on from inside. -->
+    <InternalsVisibleTo Include="HexMaster.CodingStandards.Mcp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\HexMaster.CodingStandards.Docs\HexMaster.CodingStandards.Docs.csproj" />
   </ItemGroup>
 

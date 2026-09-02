@@ -86,6 +86,41 @@ public sealed class DocumentSet
     public IReadOnlyList<DocumentListEntry> Listing() =>
         Catalog.Entries.Select(entry => DocumentListEntry.From(DocumentSummary.From(entry))).ToArray();
 
+    /// <summary>
+    /// Every document eligible to become an agent skill, ordered by category then id.
+    /// </summary>
+    /// <remarks>
+    /// Eligibility is a judgement about the document itself and nothing else: a superseded
+    /// or deprecated standard would teach a retracted rule, so it is excluded. Category,
+    /// tags, and subject matter never exclude a document - whether a standard applies to
+    /// the caller's codebase is a judgement only the caller can make, and a set pre-filtered
+    /// here would take that judgement away from it.
+    ///
+    /// Ordering comes from <see cref="DocumentCatalog"/>, which sorts on construction, so
+    /// two candidate sets over the same snapshot are identical without sorting here. Entries
+    /// the parser rejected never reached the catalog, so they can neither appear nor fail
+    /// the request. Catalog metadata only: no body is read and no request is made.
+    /// </remarks>
+    public IReadOnlyList<DocumentSummary> SkillCandidates() =>
+        Catalog.Entries
+            .Where(IsSkillCandidate)
+            .Select(DocumentSummary.From)
+            .ToArray();
+
+    /// <summary>
+    /// Whether a document may become a skill: everything except a retired standard.
+    /// </summary>
+    /// <remarks>
+    /// Written as an exclusion rather than as a list of allowed statuses, because that is
+    /// how the rule was decided. <c>draft</c> is included and carries its status through: a
+    /// draft can be a real standard still being settled, and the caller is told to weigh it
+    /// as provisional rather than skip it. A status added to <see cref="DocumentStatus"/>
+    /// later would become a candidate by default - a decision to revisit here, not a default
+    /// to rely on.
+    /// </remarks>
+    private static bool IsSkillCandidate(CatalogEntry entry) =>
+        entry.Status is not (DocumentStatus.Superseded or DocumentStatus.Deprecated);
+
     /// <summary>Looks up a catalog entry by exact, case-sensitive id.</summary>
     public CatalogEntry? FindEntry(string id) =>
         Catalog.TryGetEntry(id, out var entry) ? entry : null;

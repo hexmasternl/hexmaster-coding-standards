@@ -18,7 +18,8 @@ on:
 
 permissions:
   contents: read
-  # Federated credentials, so no Azure client secret is stored in this public repository.
+  # OIDC federated credentials: there is no Azure client secret, only the client, tenant,
+  # and subscription identifiers, which are repository secrets.
   id-token: write
 
 concurrency:
@@ -34,6 +35,9 @@ jobs:
       # The registry is not deployed by this repository. It already exists, and its login
       # server and credentials come from repository secrets.
       IMAGE_NAME: ${{ secrets.ACR_LOGIN_SERVER }}/hexmaster-coding-standards
+      # Only the region the subscription-scoped deployment records itself in; the resources
+      # take their location from the parameter file.
+      AZURE_LOCATION: swedencentral
     steps:
       - uses: actions/checkout@v4
 
@@ -63,21 +67,22 @@ jobs:
       - name: Sign in to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # One deployment per release: the registry is not ours to create, and the image
-      # already exists by the time this runs. The registry parameters are what let the
-      # container app pull it; registryPassword is a secure parameter, so ARM does not
-      # retain its value in the deployment history.
+      # One deployment per release, subscription scoped: the template creates its own
+      # resource group, so a bare subscription needs nothing prepared. The registry is not
+      # ours to create and the image already exists by the time this runs; the registry
+      # parameters are what let the container app pull it. registryPassword is a secure
+      # parameter, so ARM does not retain its value in the deployment history.
       - name: Deploy infrastructure
         id: application
         uses: azure/arm-deploy@v2
         with:
-          scope: resourcegroup
-          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
+          scope: subscription
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          region: ${{ env.AZURE_LOCATION }}
           template: infra/main.bicep
           parameters: >-
             infra/params/prod.bicepparam
@@ -119,6 +124,7 @@ jobs:
             echo "|---|---|"
             echo "| Endpoint | ${{ steps.application.outputs.url }} |"
             echo "| Image tag | \`${{ github.sha }}\` |"
+            echo "| Resource group | ${{ steps.application.outputs.resourceGroupName }} |"
             echo "| Container app | ${{ steps.application.outputs.containerAppName }} |"
             echo
             echo "Roll back by re-running this workflow's deploy step with a previous commit SHA tag."

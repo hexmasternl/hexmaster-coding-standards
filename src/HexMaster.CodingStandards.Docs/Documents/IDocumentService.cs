@@ -193,6 +193,23 @@ public interface IDocumentService
     Task<DocumentResult<IReadOnlyList<DocumentListEntry>>> GetListingAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// Lists the documents eligible to become agent skills, with their full metadata
+    /// including <c>Status</c>, ordered by category then id.
+    /// </summary>
+    /// <remarks>
+    /// Every catalogued document except those whose status is <c>superseded</c> or
+    /// <c>deprecated</c>: a retired standard would be distilled into a skill teaching a rule
+    /// nobody follows any more. Nothing else narrows the set. Whether a standard applies to
+    /// a given codebase is a judgement only the caller can make, so relevance filtering is
+    /// deliberately left to it - see the <c>mcp-server-recommended-skills-tool</c> design.
+    ///
+    /// Reads catalog metadata alone - no GitHub request, no document body. An empty set over
+    /// a loaded catalog is a success; only a catalog that never loaded reports
+    /// <see cref="DocumentOutcome.NotReady"/>.
+    /// </remarks>
+    Task<DocumentResult<IReadOnlyList<DocumentSummary>>> GetSkillCandidatesAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Retrieves a document and its body by exact, case-sensitive id, fetching the body if no
     /// unexpired cached copy is held.
     /// </summary>
