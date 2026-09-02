@@ -14,7 +14,7 @@ The repository is public: `https://github.com/hexmasternl/hexmaster-coding-stand
 HexMaster Coding Standards.slnx                # solution, repository root
 global.json                                    # pinned SDK + MTP test-runner opt-in
 Directory.Build.props                          # TFM, nullable, warnings-as-errors for all projects
-Dockerfile                                     # multi-stage, linux-x64, chiselled ASP.NET base
+GitVersion.yml                                 # version source for the container image tag
 
 src/HexMaster.CodingStandards.Mcp/             # ASP.NET Core host
   Program.cs                                   #   composition: MCP HTTP transport, DI, health
@@ -63,7 +63,7 @@ dotnet run --project src/HexMaster.CodingStandards.Mcp
 
 dotnet run --project tools/HexMaster.CodingStandards.CatalogValidator -- .   # validate docs/index.json
 
-docker build -t hexmaster-coding-standards .
+dotnet publish src/HexMaster.CodingStandards.Mcp -c Release -t:PublishContainer   # build + push nvv54gsk4pteu.azurecr.io/servers/mcp/coding-standard:<gitversion>
 az bicep build --file infra/main.bicep
 az bicep build-params --file infra/params/prod.bicepparam
 ```

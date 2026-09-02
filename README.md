@@ -126,7 +126,7 @@ dotnet build                                            # warnings are errors in
 dotnet test                                             # xUnit v3, no network required
 dotnet run --project src/HexMaster.CodingStandards.Mcp   # then GET /health
 
-docker build -t hexmaster-coding-standards .
+dotnet publish src/HexMaster.CodingStandards.Mcp -c Release -t:PublishContainer   # build + push nvv54gsk4pteu.azurecr.io/servers/mcp/coding-standard:<gitversion>
 az bicep build --file infra/main.bicep
 ```
 

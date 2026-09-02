@@ -9,6 +9,48 @@
          of self-contained single-file publish". -->
   </PropertyGroup>
 
+  <!-- SDK container publishing. `dotnet publish -t:PublishContainer` builds the image from
+       these properties and pushes it straight to the registry below; no Dockerfile and no
+       docker daemon are involved. Publishing locally without registry credentials means
+       overriding the registry: `-p:ContainerRegistry=` loads into the local daemon instead. -->
+  <PropertyGroup>
+    <ContainerRegistry>nvv54gsk4pteu.azurecr.io</ContainerRegistry>
+    <ContainerRepository>servers/mcp/coding-standard</ContainerRepository>
+
+    <!-- Chiselled, matching what the Dockerfile used: no shell, no package manager, and a
+         non-root user - a small attack surface for a publicly reachable endpoint. -->
+    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled</ContainerBaseImage>
+    <ContainerUser>app</ContainerUser>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Container Apps ingress terminates TLS and forwards plain HTTP to this port. -->
+    <ContainerEnvironmentVariable Include="ASPNETCORE_HTTP_PORTS" Value="8080" />
+    <ContainerPort Include="8080" Type="tcp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The image tag is the semantic version GitVersion derives from the git history, so a
+         tag is traceable to a commit without carrying a SHA. Needs the full history: a
+         shallow clone makes GitVersion guess or fail. -->
+    <PackageReference Include="GitVersion.MsBuild" Version="6.8.2" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- GitVersion publishes its properties from a task, so they do not exist yet while the
+       PropertyGroups above are being evaluated. The tag therefore has to be assigned from a
+       target, once GetVersion has run and before the container configuration is computed.
+       SemVer rather than FullSemVer: build metadata is separated by '+', which a container
+       tag may not contain. -->
+  <Target Name="SetContainerImageTagFromGitVersion"
+          BeforeTargets="ComputeContainerConfig"
+          DependsOnTargets="GetVersion">
+    <PropertyGroup>
+      <ContainerImageTag>$(GitVersion_SemVer)</ContainerImageTag>
+    </PropertyGroup>
+    <Message Importance="high"
+             Text="Container image: $(ContainerRegistry)/$(ContainerRepository):$(ContainerImageTag)" />
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
   </ItemGroup>
