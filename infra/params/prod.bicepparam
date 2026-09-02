@@ -10,7 +10,7 @@ param maxReplicas = 3
 param documentsOwner = 'hexmasternl'
 param documentsRepository = 'hexmaster-coding-standards'
 param documentsRef = 'main'
-param documentsRefreshInterval = '00:15:00'
+param documentsCatalogCacheLifetime = '00:30:00'
 
 // containerImage is deliberately not set here. CD passes the commit-SHA-tagged image; with
 // no value the template's public placeholder runs, which is what lets a first deployment

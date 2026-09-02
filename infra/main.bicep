@@ -43,8 +43,8 @@ param documentsRepository string = 'hexmaster-coding-standards'
 @description('Branch, tag, or commit to serve documents from.')
 param documentsRef string = 'main'
 
-@description('How often the content set is refreshed from GitHub.')
-param documentsRefreshInterval string = '00:15:00'
+@description('How long a loaded catalog is served before the next request re-fetches it.')
+param documentsCatalogCacheLifetime string = '00:30:00'
 
 // A registry name allows letters and digits only, so hyphens are stripped and a short hash
 // of the resource group id keeps it globally unique.
@@ -103,7 +103,7 @@ module containerApp 'modules/containerApp.bicep' = {
     documentsOwner: documentsOwner
     documentsRepository: documentsRepository
     documentsRef: documentsRef
-    documentsRefreshInterval: documentsRefreshInterval
+    documentsCatalogCacheLifetime: documentsCatalogCacheLifetime
   }
 }
 

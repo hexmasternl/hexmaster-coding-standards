@@ -26,6 +26,24 @@ after a quiet period takes a few seconds.
 The endpoint is published in the deployment summary of the most recent
 [CD run](../../actions/workflows/cd.yml).
 
+### What the server offers
+
+| Tool | What it does |
+| --- | --- |
+| `list_documents` | Lists every standard with its id, title, category, description, and tags. No arguments, no document text — call it first to find the id you need. |
+| `get_document` | Returns one standard's full markdown, given its catalog id. Ids are exact and case-sensitive. |
+| `find_documents_by_tag` | Finds the standards carrying one subject tag, returning each match's id, title, category, and description. No document text. |
+
+`find_documents_by_tag` matches whole tags first and only falls back to approximate matching
+— documents whose tag *contains* what you asked for — when no standard carries the tag
+exactly, so asking for `testing` still finds a `unit-testing` standard. The response says
+which of the two happened. Its payload deliberately omits `tags`, so use `list_documents` to
+see the tag vocabulary the catalog actually uses.
+
+**Freshness:** nothing the server returns is more than **30 minutes old**. The catalog and
+each document body are cached separately for 30 minutes, so a standard merged to `main`
+appears within half an hour without a deployment.
+
 ## Adding or changing a standard
 
 1. Write the document in the folder matching its kind, following that folder's `0000-*`
@@ -53,7 +71,7 @@ The endpoint is published in the deployment summary of the most recent
    dotnet run --project tools/HexMaster.CodingStandards.CatalogValidator -- .
    ```
 
-Merging to `main` is enough — the running server picks the change up on its next refresh.
+Merging to `main` is enough — the running server picks the change up within 30 minutes.
 No deployment, no image build.
 
 ## Working on the server

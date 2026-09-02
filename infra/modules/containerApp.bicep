@@ -44,7 +44,7 @@ param documentsRepository string
 param documentsRef string
 
 @description('How often the content set is refreshed from GitHub.')
-param documentsRefreshInterval string
+param documentsCatalogCacheLifetime string
 
 @description('Port the container listens on.')
 param containerPort int = 8080
@@ -113,8 +113,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: documentsRef
             }
             {
-              name: 'Documents__RefreshInterval'
-              value: documentsRefreshInterval
+              name: 'Documents__CatalogCacheLifetime'
+              value: documentsCatalogCacheLifetime
             }
           ]
           probes: [
