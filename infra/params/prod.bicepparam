@@ -12,6 +12,7 @@ param documentsRepository = 'hexmaster-coding-standards'
 param documentsRef = 'main'
 param documentsCatalogCacheLifetime = '00:30:00'
 
-// containerImage is deliberately not set here. CD passes the commit-SHA-tagged image; with
-// no value the template's public placeholder runs, which is what lets a first deployment
-// into an empty resource group succeed.
+// containerImage and the registry parameters are deliberately not set here. CD passes the
+// commit-SHA-tagged image together with the registry login server and credentials, which
+// are repository secrets and so must never appear in a checked-in parameter file. With no
+// values the template's public placeholder runs instead.

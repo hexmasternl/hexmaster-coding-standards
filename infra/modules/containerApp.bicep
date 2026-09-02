@@ -13,11 +13,15 @@ param managedEnvironmentId string
 @description('Container image to run, including registry and tag.')
 param containerImage string
 
-@description('Login server of the registry to pull from. Empty when running a public image.')
+@description('Login server of the existing registry to pull from. Empty when running a public image.')
 param registryLoginServer string = ''
 
-@description('Resource id of the user-assigned identity used to pull the image.')
-param userAssignedIdentityId string
+@description('Username for the registry to pull from.')
+param registryUsername string = ''
+
+@description('Password for the registry to pull from.')
+@secure()
+param registryPassword string = ''
 
 @description('Highest number of replicas HTTP scaling may create.')
 @minValue(1)
@@ -49,21 +53,19 @@ param documentsCatalogCacheLifetime string
 @description('Port the container listens on.')
 param containerPort int = 8080
 
-// Only set a registry block when pulling from a private registry. On the very first
-// deployment the app runs a public placeholder image, and naming a registry it cannot yet
-// pull from would fail the deployment.
+// Only set a registry block when a private registry was supplied. Without one the app runs
+// a public placeholder image, and naming a registry it has no credentials for would fail
+// the revision.
 var usesRegistry = !empty(registryLoginServer)
+
+// The platform will not take a registry password inline: it has to be a named secret that
+// the registry block references.
+var registryPasswordSecretName = 'registry-password'
 
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
   location: location
   tags: tags
-  identity: {
-    type: 'UserAssigned'
-    userAssignedIdentities: {
-      '${userAssignedIdentityId}': {}
-    }
-  }
   properties: {
     managedEnvironmentId: managedEnvironmentId
     workloadProfileName: 'Consumption'
@@ -83,10 +85,17 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           }
         ]
       }
+      secrets: usesRegistry ? [
+        {
+          name: registryPasswordSecretName
+          value: registryPassword
+        }
+      ] : []
       registries: usesRegistry ? [
         {
           server: registryLoginServer
-          identity: userAssignedIdentityId
+          username: registryUsername
+          passwordSecretRef: registryPasswordSecretName
         }
       ] : []
     }
@@ -145,7 +154,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       scale: {
         // Scale to zero when idle. The cost is a cold start - process start plus one
-        // archive download - on the first request after an idle period.
+        // catalog download - on the first request after an idle period.
         minReplicas: 0
         maxReplicas: maxReplicas
         rules: [

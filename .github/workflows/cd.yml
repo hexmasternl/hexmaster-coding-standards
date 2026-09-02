@@ -25,16 +25,40 @@ concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  IMAGE_REPOSITORY: hexmaster-coding-standards
-
 jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
     environment: prod
+    env:
+      # The registry is not deployed by this repository. It already exists, and its login
+      # server and credentials come from repository secrets.
+      IMAGE_NAME: ${{ secrets.ACR_LOGIN_SERVER }}/hexmaster-coding-standards
     steps:
       - uses: actions/checkout@v4
+
+      - name: Sign in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_LOGIN_USERNAME }}
+          password: ${{ secrets.ACR_LOGIN_PASSWORD }}
+
+      # The image is pushed before the infrastructure is deployed, so the app's first
+      # revision can be pinned to it straight away. Tagged with the full commit SHA, which
+      # is what makes a rollback a redeploy of an existing tag rather than a rebuild;
+      # `latest` moves alongside it for convenience but is never what the infrastructure
+      # references.
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Sign in to Azure
         uses: azure/login@v2
@@ -43,41 +67,11 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Step one of the self-bootstrapping sequence: this creates the registry so there is
-      # somewhere to push to. On a fresh resource group the app comes up on the template's
-      # public placeholder image, which is what lets a first run succeed with an empty
-      # registry.
+      # One deployment per release: the registry is not ours to create, and the image
+      # already exists by the time this runs. The registry parameters are what let the
+      # container app pull it; registryPassword is a secure parameter, so ARM does not
+      # retain its value in the deployment history.
       - name: Deploy infrastructure
-        id: infrastructure
-        uses: azure/arm-deploy@v2
-        with:
-          scope: resourcegroup
-          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
-          template: infra/main.bicep
-          parameters: infra/params/prod.bicepparam
-          deploymentName: bootstrap-${{ github.run_id }}
-
-      - name: Sign in to the container registry
-        run: az acr login --name ${{ steps.infrastructure.outputs.registryName }}
-
-      # Tagged with the full commit SHA, which is what makes a rollback a redeploy of an
-      # existing tag rather than a rebuild. `latest` moves alongside it for convenience but
-      # is never what the infrastructure references.
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ steps.infrastructure.outputs.registryLoginServer }}/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}
-            ${{ steps.infrastructure.outputs.registryLoginServer }}/${{ env.IMAGE_REPOSITORY }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Step two: pin the app to the image just pushed. Idempotent, so the repeated
-      # infrastructure deployment costs seconds.
-      - name: Deploy application
         id: application
         uses: azure/arm-deploy@v2
         with:
@@ -87,11 +81,14 @@ jobs:
           template: infra/main.bicep
           parameters: >-
             infra/params/prod.bicepparam
-            containerImage=${{ steps.infrastructure.outputs.registryLoginServer }}/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}
+            containerImage=${{ env.IMAGE_NAME }}:${{ github.sha }}
+            registryLoginServer=${{ secrets.ACR_LOGIN_SERVER }}
+            registryUsername=${{ secrets.ACR_LOGIN_USERNAME }}
+            registryPassword=${{ secrets.ACR_LOGIN_PASSWORD }}
           deploymentName: release-${{ github.run_id }}
 
       # The app scales to zero, so this request is also what wakes it: it exercises the
-      # real cold-start path, archive download included.
+      # real cold-start path, catalog download included.
       - name: Verify the deployment is healthy
         run: |
           url="${{ steps.application.outputs.url }}"
@@ -122,7 +119,6 @@ jobs:
             echo "|---|---|"
             echo "| Endpoint | ${{ steps.application.outputs.url }} |"
             echo "| Image tag | \`${{ github.sha }}\` |"
-            echo "| Registry | ${{ steps.infrastructure.outputs.registryLoginServer }} |"
             echo "| Container app | ${{ steps.application.outputs.containerAppName }} |"
             echo
             echo "Roll back by re-running this workflow's deploy step with a previous commit SHA tag."
