@@ -1,29 +1,24 @@
 using HexMaster.CodingStandards.Docs.Catalog;
-using HexMaster.CodingStandards.Docs.GitHub;
 using Microsoft.Extensions.Logging;
 
 namespace HexMaster.CodingStandards.Docs.Documents;
 
 /// <summary>
-/// An immutable snapshot of the served content: the catalog plus every document body, all
-/// from one commit.
+/// An immutable snapshot of the catalog: which documents exist and what they are about.
 /// </summary>
 /// <remarks>
-/// Immutability is what makes the cache swap atomic. A refresh builds a whole new set and
-/// replaces the reference; a reader that grabbed the old one keeps a consistent view rather
-/// than watching entries change underneath it.
+/// Holds no bodies. Bodies are fetched per document and cached in
+/// <see cref="DocumentBodyCache"/>, so this snapshot is small and cheap to replace.
+///
+/// Immutability is what makes the refresh swap atomic: a refresh builds a whole new set and
+/// replaces the reference, so a reader that grabbed the old one keeps a consistent view
+/// rather than watching entries change underneath it.
 /// </remarks>
 public sealed class DocumentSet
 {
-    private readonly Dictionary<string, string> _bodiesById;
-
-    private DocumentSet(
-        DocumentCatalog catalog,
-        Dictionary<string, string> bodiesById,
-        DateTimeOffset loadedAt)
+    private DocumentSet(DocumentCatalog catalog, DateTimeOffset loadedAt)
     {
         Catalog = catalog;
-        _bodiesById = bodiesById;
         LoadedAt = loadedAt;
     }
 
@@ -33,33 +28,18 @@ public sealed class DocumentSet
     /// <summary>When this set was loaded.</summary>
     public DateTimeOffset LoadedAt { get; }
 
-    /// <summary>How many documents can actually be served, bodies included.</summary>
-    public int Count => _bodiesById.Count;
+    /// <summary>How many documents the catalog lists.</summary>
+    public int Count => Catalog.Count;
 
     /// <summary>
-    /// Builds a set from extracted archive content.
+    /// Builds a set from catalog JSON, logging every invalid entry it skips.
     /// </summary>
-    /// <remarks>
-    /// An entry whose body is absent from the archive is dropped from the set and logged: a
-    /// catalogued id that resolves to nothing would otherwise fail on retrieval with no clue
-    /// as to why, and reporting it at load time puts the diagnosis where the cause is.
-    /// </remarks>
-    /// <exception cref="CatalogFormatException">The archive has no catalog, or it is unparseable.</exception>
-    public static DocumentSet FromExtractedContent(
-        ExtractedContent content,
-        ILogger logger,
-        TimeProvider timeProvider)
+    /// <exception cref="CatalogFormatException">The catalog could not be parsed.</exception>
+    public static DocumentSet FromCatalogJson(string catalogJson, ILogger logger, TimeProvider timeProvider)
     {
-        ArgumentNullException.ThrowIfNull(content);
+        ArgumentException.ThrowIfNullOrWhiteSpace(catalogJson);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(timeProvider);
-
-        if (!content.Tree.TryReadText(ContentArchiveExtractor.CatalogPath, out var catalogJson)
-            || catalogJson is null)
-        {
-            throw new CatalogFormatException(
-                $"The content archive has no '{ContentArchiveExtractor.CatalogPath}'.");
-        }
 
         var parsed = CatalogParser.Parse(catalogJson);
 
@@ -68,54 +48,52 @@ public sealed class DocumentSet
             logger.LogWarning("Catalog problem: {Problem}", problem.Message);
         }
 
-        var bodies = new Dictionary<string, string>(StringComparer.Ordinal);
-        var servable = new List<CatalogEntry>();
-
+        // An entry whose path could never be fetched is reported once, at load time, rather
+        // than becoming a puzzling per-request failure later. It stays in the catalog so the
+        // document remains listed and reports its body as unavailable when asked for.
         foreach (var entry in parsed.Catalog.Entries)
         {
-            if (content.Tree.TryReadText(entry.Path, out var body) && body is not null)
+            if (!ContentPath.IsValid(entry.Path, out var reason))
             {
-                bodies[entry.Id] = body;
-                servable.Add(entry);
-                continue;
+                logger.LogWarning(
+                    "Catalog entry '{DocumentId}' has an unusable path '{Path}': {Reason}. Its body will report as unavailable.",
+                    entry.Id,
+                    entry.Path,
+                    reason);
             }
-
-            logger.LogWarning(
-                "Catalog entry '{DocumentId}' points at '{Path}', which the archive does not contain; it will report not-found.",
-                entry.Id,
-                entry.Path);
         }
 
-        logger.LogInformation(
-            "Loaded {DocumentCount} document(s) from the content archive.",
-            servable.Count);
+        logger.LogInformation("Loaded a catalog of {DocumentCount} document(s).", parsed.Catalog.Count);
 
-        return new DocumentSet(new DocumentCatalog(servable), bodies, timeProvider.GetUtcNow());
+        return new DocumentSet(parsed.Catalog, timeProvider.GetUtcNow());
     }
 
     /// <summary>Every document's metadata, ordered by category then id.</summary>
     public IReadOnlyList<DocumentSummary> Index() =>
         Catalog.Entries.Select(DocumentSummary.From).ToArray();
 
-    /// <summary>Retrieves a document by exact id.</summary>
-    public Document? Find(string id)
-    {
-        if (!Catalog.TryGetEntry(id, out var entry) || entry is null)
-        {
-            return null;
-        }
-
-        return _bodiesById.TryGetValue(entry.Id, out var body)
-            ? new Document(DocumentSummary.From(entry), body)
-            : null;
-    }
-
     /// <summary>
-    /// Documents matching a keyword, ranked so metadata matches come before body-only ones.
+    /// Every document as a listing entry, ordered by category then id.
     /// </summary>
     /// <remarks>
-    /// A linear scan over tens of in-memory documents costs microseconds and stays correct
-    /// through every refresh with nothing to invalidate, which is why there is no index here.
+    /// Ordering comes from <see cref="DocumentCatalog"/>, which sorts on construction, so two
+    /// listings over the same set are identical without sorting here. Entries the parser
+    /// rejected never reached the catalog, so they cannot appear.
+    /// </remarks>
+    public IReadOnlyList<DocumentListEntry> Listing() =>
+        Catalog.Entries.Select(entry => DocumentListEntry.From(DocumentSummary.From(entry))).ToArray();
+
+    /// <summary>Looks up a catalog entry by exact, case-sensitive id.</summary>
+    public CatalogEntry? FindEntry(string id) =>
+        Catalog.TryGetEntry(id, out var entry) ? entry : null;
+
+    /// <summary>
+    /// Documents whose metadata matches a keyword, ranked with title matches first, then
+    /// tags, then description.
+    /// </summary>
+    /// <remarks>
+    /// A linear scan over tens of in-memory entries costs microseconds and needs no index to
+    /// build or invalidate.
     /// </remarks>
     public IReadOnlyList<DocumentSummary> Search(string keyword)
     {
@@ -139,30 +117,23 @@ public sealed class DocumentSet
     }
 
     /// <summary>
-    /// How well an entry matches: title and tag hits outrank description, which outranks the
-    /// body. A document whose title is the keyword is almost always the one wanted.
+    /// How well an entry matches: a title hit outranks a tag hit, which outranks a
+    /// description hit. A document whose title is the keyword is almost always the one wanted.
     /// </summary>
-    private int RankOf(CatalogEntry entry, string keyword)
+    private static int RankOf(CatalogEntry entry, string keyword)
     {
         const StringComparison Comparison = StringComparison.OrdinalIgnoreCase;
 
         if (entry.Title.Contains(keyword, Comparison))
         {
-            return 4;
+            return 3;
         }
 
         if (entry.Tags.Any(tag => tag.Contains(keyword, Comparison)))
         {
-            return 3;
-        }
-
-        if (entry.Description.Contains(keyword, Comparison))
-        {
             return 2;
         }
 
-        return _bodiesById.TryGetValue(entry.Id, out var body) && body.Contains(keyword, Comparison)
-            ? 1
-            : 0;
+        return entry.Description.Contains(keyword, Comparison) ? 1 : 0;
     }
 }

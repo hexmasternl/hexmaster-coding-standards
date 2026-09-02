@@ -2,29 +2,43 @@ using HexMaster.CodingStandards.Docs.Catalog;
 using HexMaster.CodingStandards.Docs.Documents;
 using HexMaster.CodingStandards.Docs.GitHub;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 namespace HexMaster.CodingStandards.Docs.Tests;
 
 public class DocumentServiceTests
 {
-    [Fact]
-    public void ReportsNotReadyBeforeAnythingHasLoaded()
-    {
-        var (service, _) = Service();
+    private const string DecisionPath = "docs/ADR/a-decision.md";
+    private const string DesignPath = "docs/Designs/a-design.md";
+    private const string StructurePath = "docs/Structures/a-structure.md";
 
-        service.IsReady.ShouldBeFalse();
-        service.GetIndex().Outcome.ShouldBe(DocumentOutcome.NotReady);
-        service.GetDocument("anything").Outcome.ShouldBe(DocumentOutcome.NotReady);
-        service.Search("anything").Outcome.ShouldBe(DocumentOutcome.NotReady);
+    [Fact]
+    public void ReportsNotReadyBeforeAnyCatalogHasLoaded()
+    {
+        var context = new ServiceContext();
+
+        context.Service.IsReady.ShouldBeFalse();
+        context.Service.GetIndex().Outcome.ShouldBe(DocumentOutcome.NotReady);
+        context.Service.Search("anything").Outcome.ShouldBe(DocumentOutcome.NotReady);
+    }
+
+    [Fact]
+    public async Task ReportsNotReadyForRetrievalBeforeAnyCatalogHasLoaded()
+    {
+        var context = new ServiceContext();
+
+        var result = await context.Service.GetDocumentAsync("anything", TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBe(DocumentOutcome.NotReady);
+        context.Github.TotalBodyCalls.ShouldBe(0);
     }
 
     [Fact]
     public void ListsEveryDocumentWithMetadataAndNoBodies()
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        var result = service.GetIndex();
+        var result = context.Service.GetIndex();
 
         result.IsSuccess.ShouldBeTrue();
         result.Value!.Count.ShouldBe(3);
@@ -32,142 +46,243 @@ public class DocumentServiceTests
         var first = result.Value[0];
         first.Id.ShouldBe("a-decision");
         first.Title.ShouldBe("A decision");
-        first.Description.ShouldBe("Decides a thing about caching.");
         first.Category.ShouldBe(DocumentCategory.Adr);
         first.Status.ShouldBe(DocumentStatus.Accepted);
         first.Tags.ShouldBe(["caching", "performance"]);
+
+        // Listing must not touch GitHub: the catalog already holds everything it returns.
+        context.Github.TotalBodyCalls.ShouldBe(0);
     }
 
     [Fact]
     public void OrdersTheIndexByCategoryThenId()
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        service.GetIndex().Value!.Select(summary => summary.Id)
+        context.Service.GetIndex().Value!.Select(summary => summary.Id)
             .ShouldBe(["a-decision", "a-design", "a-structure"]);
     }
 
     [Fact]
     public void ReturnsAnEmptyIndexForAnEmptyButLoadedCatalog()
     {
-        var (service, cache) = Service();
-        cache.Replace(SetFrom(new TarGzBuilder().WithFile("docs/index.json", """{ "documents": [] }""")));
+        var context = new ServiceContext().WithCatalog("""{ "documents": [] }""");
 
-        var result = service.GetIndex();
+        var result = context.Service.GetIndex();
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.ShouldBeEmpty();
     }
 
     [Fact]
-    public void RetrievesADocumentWithItsFullBody()
+    public async Task RetrievesADocumentWithItsFullBody()
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        var result = service.GetDocument("a-decision");
+        var result = await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value!.Summary.Title.ShouldBe("A decision");
         result.Value.Markdown.ShouldBe("# A decision\n\nWe will cache things.");
+        result.Value.FetchedAt.ShouldBe(context.Time.GetUtcNow());
     }
 
     [Fact]
-    public void ReportsNotFoundForAnUnknownId()
+    public async Task FetchesOnlyTheRequestedDocumentsBody()
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        var result = service.GetDocument("no-such-document");
+        await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken);
+
+        context.Github.BodyCallsFor(DecisionPath).ShouldBe(1);
+        context.Github.BodyCallsFor(DesignPath).ShouldBe(0);
+        context.Github.BodyCallsFor(StructurePath).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ASecondRetrievalInsideTheLifetimeMakesNoRequest()
+    {
+        var context = new ServiceContext().WithLoadedCatalog();
+
+        await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken);
+        context.Time.Advance(TimeSpan.FromMinutes(20));
+        await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken);
+
+        context.Github.BodyCallsFor(DecisionPath).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ReportsNotFoundForAnUnknownIdWithNoRequest()
+    {
+        var context = new ServiceContext().WithLoadedCatalog();
+
+        var result = await context.Service.GetDocumentAsync("no-such-document", TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldBe(DocumentOutcome.NotFound);
         result.Value.ShouldBeNull();
         result.Message!.ShouldContain("no-such-document");
+        context.Github.TotalBodyCalls.ShouldBe(0);
     }
 
     [Theory]
     [InlineData("A-Decision")]
     [InlineData("a-dec")]
     [InlineData("decision")]
-    public void DoesNotFallBackToAFuzzyMatch(string id)
+    public async Task DoesNotFallBackToAFuzzyMatch(string id)
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        service.GetDocument(id).Outcome.ShouldBe(DocumentOutcome.NotFound);
+        var result = await context.Service.GetDocumentAsync(id, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBe(DocumentOutcome.NotFound);
+        context.Github.TotalBodyCalls.ShouldBe(0);
     }
 
     [Fact]
-    public void RejectsABlankDocumentId()
+    public async Task RejectsABlankDocumentId()
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        service.GetDocument("   ").Outcome.ShouldBe(DocumentOutcome.InvalidRequest);
+        var result = await context.Service.GetDocumentAsync("   ", TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBe(DocumentOutcome.InvalidRequest);
+        context.Github.TotalBodyCalls.ShouldBe(0);
     }
 
     [Fact]
-    public void DropsACataloguedDocumentTheArchiveDoesNotContain()
+    public async Task ReportsUnavailableWhenTheFileIsMissingAtTheRef()
     {
-        // Task 4.6: the catalog lists two documents, the archive carries one body.
-        var archive = new TarGzBuilder()
-            .WithFile("docs/index.json", CatalogJson(
-                EntryJson("present", "Present", "ADR", "docs/ADR/present.md"),
-                EntryJson("absent", "Absent", "ADR", "docs/ADR/absent.md")))
-            .WithFile("docs/ADR/present.md", "# Present\n");
+        var context = new ServiceContext().WithLoadedCatalog();
+        context.Github.WithBodyFailure(DecisionPath, ContentFetchStatus.NotFound, "GitHub has no file there");
 
-        var (service, cache) = Service();
-        cache.Replace(SetFrom(archive));
+        var result = await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken);
 
-        service.GetDocument("present").IsSuccess.ShouldBeTrue();
-        service.GetDocument("absent").Outcome.ShouldBe(DocumentOutcome.NotFound);
-        service.GetIndex().Value!.Select(summary => summary.Id).ShouldBe(["present"]);
+        // Distinct from NotFound: the document is catalogued, so retrying later may work.
+        result.Outcome.ShouldBe(DocumentOutcome.Unavailable);
+        result.Message!.ShouldContain("a-decision");
     }
 
     [Fact]
-    public void SearchesTitleTagsDescriptionAndBody()
+    public async Task NotFoundAndUnavailableAreDistinguishableWithoutParsingMessages()
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
+        context.Github.WithBodyFailure(DecisionPath, ContentFetchStatus.RateLimited, "rate limited");
 
-        service.Search("decision").Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
-        service.Search("performance").Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
-        service.Search("caching").Value!.Select(summary => summary.Id).ShouldContain("a-decision");
-        service.Search("folders").Value!.Select(summary => summary.Id).ShouldBe(["a-structure"]);
+        var unknown = await context.Service.GetDocumentAsync("nope", TestContext.Current.CancellationToken);
+        var unavailable = await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken);
+
+        unknown.Outcome.ShouldBe(DocumentOutcome.NotFound);
+        unavailable.Outcome.ShouldBe(DocumentOutcome.Unavailable);
+        unknown.Outcome.ShouldNotBe(unavailable.Outcome);
     }
 
     [Fact]
-    public void RanksTitleMatchesAboveBodyOnlyMatches()
+    public async Task ReportsUnavailableForAnUnusablePathWithoutARequest()
     {
-        var archive = new TarGzBuilder()
-            .WithFile("docs/index.json", CatalogJson(
-                EntryJson("body-match", "Something else", "ADR", "docs/ADR/body.md"),
-                EntryJson("telemetry", "Telemetry", "ADR", "docs/ADR/title.md")))
-            .WithFile("docs/ADR/body.md", "# Something else\n\nMentions telemetry deep in the body.")
-            .WithFile("docs/ADR/title.md", "# Telemetry\n\nNothing else.");
+        var context = new ServiceContext().WithCatalog(CatalogJson(
+            EntryJson("traversal", "Traversal", "ADR", "docs/../../etc/passwd")));
 
-        var (service, cache) = Service();
-        cache.Replace(SetFrom(archive));
+        var result = await context.Service.GetDocumentAsync("traversal", TestContext.Current.CancellationToken);
 
-        service.Search("telemetry").Value!.Select(summary => summary.Id)
-            .ShouldBe(["telemetry", "body-match"]);
+        result.Outcome.ShouldBe(DocumentOutcome.Unavailable);
+        context.Github.TotalBodyCalls.ShouldBe(0);
     }
 
     [Fact]
-    public void RanksTagMatchesAboveBodyOnlyMatches()
+    public async Task OneBadPathLeavesEveryOtherDocumentRetrievable()
     {
-        var archive = new TarGzBuilder()
-            .WithFile("docs/index.json", CatalogJson(
-                EntryJson("body-match", "Unrelated", "ADR", "docs/ADR/body.md", tags: "\"other\""),
-                EntryJson("tagged", "Also unrelated", "ADR", "docs/ADR/tagged.md", tags: "\"bicep\"")))
-            .WithFile("docs/ADR/body.md", "# Unrelated\n\nA passing mention of bicep.")
-            .WithFile("docs/ADR/tagged.md", "# Also unrelated\n\nNothing.");
+        var context = new ServiceContext().WithCatalog(CatalogJson(
+            EntryJson("bad", "Bad", "ADR", "docs/../escape.md"),
+            EntryJson("good", "Good", "ADR", DecisionPath)));
 
-        var (service, cache) = Service();
-        cache.Replace(SetFrom(archive));
+        context.Github.WithBody(DecisionPath, "# Good\n");
 
-        service.Search("bicep").Value!.Select(summary => summary.Id).ShouldBe(["tagged", "body-match"]);
+        context.Service.GetIndex().Value!.Count.ShouldBe(2);
+        (await context.Service.GetDocumentAsync("bad", TestContext.Current.CancellationToken))
+            .Outcome.ShouldBe(DocumentOutcome.Unavailable);
+        (await context.Service.GetDocumentAsync("good", TestContext.Current.CancellationToken))
+            .IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task OneFailingDocumentDoesNotAffectAnother()
+    {
+        var context = new ServiceContext().WithLoadedCatalog();
+        context.Github.WithBodyFailure(DecisionPath, ContentFetchStatus.Failed, "boom");
+
+        (await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken))
+            .Outcome.ShouldBe(DocumentOutcome.Unavailable);
+        (await context.Service.GetDocumentAsync("a-design", TestContext.Current.CancellationToken))
+            .IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ARecoveredDocumentIsServedOnRetry()
+    {
+        var context = new ServiceContext().WithLoadedCatalog();
+        context.Github.WithBodyFailure(DecisionPath, ContentFetchStatus.Failed, "boom");
+
+        (await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken))
+            .Outcome.ShouldBe(DocumentOutcome.Unavailable);
+
+        context.Github.WithBody(DecisionPath, "# A decision\n\nRecovered.");
+
+        var result = await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value!.Markdown.ShouldContain("Recovered");
+    }
+
+    [Fact]
+    public async Task ARepointedPathAfterARefreshFetchesTheNewFile()
+    {
+        const string RenamedPath = "docs/ADR/a-renamed-decision.md";
+
+        var context = new ServiceContext().WithLoadedCatalog();
+        context.Github.WithBody(RenamedPath, "# A decision\n\nThe new file.");
+
+        (await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken))
+            .Value!.Markdown.ShouldContain("We will cache things");
+
+        // The catalog now points the same id at a different file.
+        context.ReplaceCatalog(CatalogJson(
+            EntryJson("a-decision", "A decision", "ADR", RenamedPath)));
+
+        (await context.Service.GetDocumentAsync("a-decision", TestContext.Current.CancellationToken))
+            .Value!.Markdown.ShouldContain("The new file");
+    }
+
+    [Fact]
+    public void SearchesTitleTagsAndDescription()
+    {
+        var context = new ServiceContext().WithLoadedCatalog();
+
+        context.Service.Search("decision").Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
+        context.Service.Search("performance").Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
+        context.Service.Search("folders").Value!.Select(summary => summary.Id).ShouldBe(["a-structure"]);
+    }
+
+    [Fact]
+    public void SearchDoesNotReachForBodies()
+    {
+        // Bodies are fetched per document and are not resident, so search is metadata-only.
+        // Searching them would mean fetching the whole corpus on the first search.
+        var context = new ServiceContext().WithLoadedCatalog();
+
+        context.Service.Search("cache").Value!.ShouldBeEmpty();
+        context.Github.TotalBodyCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void RanksTitleMatchesAboveTagAndDescriptionMatches()
+    {
+        var context = new ServiceContext().WithCatalog(CatalogJson(
+            EntryJson("described", "Unrelated", "ADR", "docs/ADR/described.md",
+                description: "Mentions telemetry in the description."),
+            EntryJson("tagged", "Also unrelated", "ADR", "docs/ADR/tagged.md", tags: "\"telemetry\""),
+            EntryJson("titled", "Telemetry", "ADR", "docs/ADR/titled.md")));
+
+        context.Service.Search("telemetry").Value!.Select(summary => summary.Id)
+            .ShouldBe(["titled", "tagged", "described"]);
     }
 
     [Theory]
@@ -176,19 +291,17 @@ public class DocumentServiceTests
     [InlineData("dEcIsIoN")]
     public void SearchIgnoresCase(string keyword)
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        service.Search(keyword).Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
+        context.Service.Search(keyword).Value!.Select(summary => summary.Id).ShouldBe(["a-decision"]);
     }
 
     [Fact]
     public void AnEmptySearchResultIsSuccessNotFailure()
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        var result = service.Search("nothing-matches-this");
+        var result = context.Service.Search("nothing-matches-this");
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.ShouldBeEmpty();
@@ -200,67 +313,34 @@ public class DocumentServiceTests
     [InlineData("\t\n")]
     public void RejectsABlankKeywordRatherThanReturningEverything(string keyword)
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        var result = service.Search(keyword);
+        var result = context.Service.Search(keyword);
 
         result.Outcome.ShouldBe(DocumentOutcome.InvalidRequest);
         result.Value.ShouldBeNull();
     }
 
     [Fact]
-    public void SwapsTheCachedSetAtomically()
+    public void SwapsTheCachedCatalogAtomically()
     {
-        var (service, cache) = Service();
-        cache.Replace(LoadedSet());
+        var context = new ServiceContext().WithLoadedCatalog();
 
-        var before = service.GetIndex().Value!;
+        var before = context.Service.GetIndex().Value!;
 
-        cache.Replace(SetFrom(new TarGzBuilder()
-            .WithFile("docs/index.json", CatalogJson(EntryJson("new-one", "New one", "ADR", "docs/ADR/new.md")))
-            .WithFile("docs/ADR/new.md", "# New one\n")));
+        context.ReplaceCatalog(CatalogJson(EntryJson("new-one", "New one", "ADR", "docs/ADR/new.md")));
 
-        var after = service.GetIndex().Value!;
+        var after = context.Service.GetIndex().Value!;
 
         // The snapshot a reader already holds is unaffected by the swap.
         before.Select(summary => summary.Id).ShouldBe(["a-decision", "a-design", "a-structure"]);
         after.Select(summary => summary.Id).ShouldBe(["new-one"]);
     }
 
-    private static (IDocumentService Service, DocumentSetCache Cache) Service()
-    {
-        var cache = new DocumentSetCache();
-        return (new DocumentService(cache), cache);
-    }
-
-    private static DocumentSet LoadedSet() => SetFrom(new TarGzBuilder()
-        .WithFile("docs/index.json", CatalogJson(
-            EntryJson("a-decision", "A decision", "ADR", "docs/ADR/a-decision.md",
-                description: "Decides a thing about caching.", tags: "\"caching\", \"performance\""),
-            EntryJson("a-design", "A design", "Design", "docs/Designs/a-design.md"),
-            EntryJson("a-structure", "A structure", "Structure", "docs/Structures/a-structure.md",
-                description: "Describes how folders are laid out.")))
-        .WithFile("docs/ADR/a-decision.md", "# A decision\n\nWe will cache things.")
-        .WithFile("docs/Designs/a-design.md", "# A design\n\nA pattern.")
-        .WithFile("docs/Structures/a-structure.md", "# A structure\n\nFolders."));
-
-    private static DocumentSet SetFrom(TarGzBuilder builder)
-    {
-        using var archive = builder.Build();
-
-        var extracted = ContentArchiveExtractor
-            .ExtractAsync(archive, NullLogger.Instance, TestContext.Current.CancellationToken)
-            .GetAwaiter()
-            .GetResult();
-
-        return DocumentSet.FromExtractedContent(extracted, NullLogger.Instance, TimeProvider.System);
-    }
-
-    private static string CatalogJson(params string[] entries) =>
+    internal static string CatalogJson(params string[] entries) =>
         $"{{ \"documents\": [{string.Join(",", entries)}] }}";
 
-    private static string EntryJson(
+    internal static string EntryJson(
         string id,
         string title,
         string category,
@@ -279,4 +359,54 @@ public class DocumentServiceTests
           "path": "{{path}}"
         }
         """;
+
+    /// <summary>Assembles the service over fakes, with the clock and GitHub under test control.</summary>
+    private sealed class ServiceContext
+    {
+        public ServiceContext()
+        {
+            Github = new FakeGitHubContentClient();
+            Time = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-02T10:00:00Z", null));
+            CatalogCache = new DocumentSetCache();
+
+            var bodyCache = new DocumentBodyCache(
+                Github,
+                new StaticOptionsMonitor<GitHubContentOptions>(new GitHubContentOptions()),
+                Time);
+
+            Service = new DocumentService(CatalogCache, bodyCache, NullLogger<DocumentService>.Instance);
+        }
+
+        public FakeGitHubContentClient Github { get; }
+
+        public FakeTimeProvider Time { get; }
+
+        public DocumentSetCache CatalogCache { get; }
+
+        public IDocumentService Service { get; }
+
+        public ServiceContext WithCatalog(string catalogJson)
+        {
+            ReplaceCatalog(catalogJson);
+            return this;
+        }
+
+        public ServiceContext WithLoadedCatalog()
+        {
+            Github
+                .WithBody(DecisionPath, "# A decision\n\nWe will cache things.")
+                .WithBody(DesignPath, "# A design\n\nA pattern.")
+                .WithBody(StructurePath, "# A structure\n\nFolders.");
+
+            return WithCatalog(CatalogJson(
+                EntryJson("a-decision", "A decision", "ADR", DecisionPath,
+                    description: "Decides a thing.", tags: "\"caching\", \"performance\""),
+                EntryJson("a-design", "A design", "Design", DesignPath),
+                EntryJson("a-structure", "A structure", "Structure", StructurePath,
+                    description: "Describes how folders are laid out.")));
+        }
+
+        public void ReplaceCatalog(string catalogJson) =>
+            CatalogCache.Replace(DocumentSet.FromCatalogJson(catalogJson, NullLogger.Instance, Time));
+    }
 }
