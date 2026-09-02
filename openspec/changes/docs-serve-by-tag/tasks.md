@@ -44,8 +44,8 @@
 
 ## 5. End-to-end verification and documentation
 
-- [ ] 5.1 Run the server against the real repository and confirm an MCP client sees the tag tool listed with its single required parameter alongside the other document tools
-- [ ] 5.2 Confirm an exact tag returns the expected documents reported as exact, and a partial tag returns approximate matches reported as approximate
-- [ ] 5.3 Confirm a blank tag, an unmatched tag, and an unloaded catalog produce the three distinct outcomes specified
-- [ ] 5.4 Add the tool to `README.md`, including how tag values are discovered from the list tool and that the payload omits `tags`
-- [ ] 5.5 Run `dotnet build` and `dotnet test` from the repository root with no network access and confirm a clean, warning-free build and a passing offline suite
+- [x] 5.1 Run the server against the real repository and confirm an MCP client sees the tag tool listed with its single required parameter alongside the other document tools
+- [x] 5.2 Confirm an exact tag returns the expected documents reported as exact, and a partial tag returns approximate matches reported as approximate
+- [x] 5.3 Confirm a blank tag, an unmatched tag, and an unloaded catalog produce the three distinct outcomes specified
+- [x] 5.4 Add the tool to `README.md`, including how tag values are discovered from the list tool and that the payload omits `tags`
+- [x] 5.5 Run `dotnet build` and `dotnet test` from the repository root with no network access and confirm a clean, warning-free build and a passing offline suite

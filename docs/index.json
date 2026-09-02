@@ -6,7 +6,13 @@
       "description": "Strongly recommends, without mandating, that web-facing ASP.NET services orchestrate their dependencies through an Aspire AppHost and take telemetry, health checks, resilience, and service discovery from Aspire service defaults before writing custom equivalents, while leaving domain-only libraries and console tools free to opt out.",
       "category": "ADR",
       "status": "accepted",
-      "tags": ["aspire", "orchestration", "observability", "aspnet", "service-discovery"],
+      "tags": [
+        "aspire",
+        "orchestration",
+        "observability",
+        "aspnet",
+        "service-discovery"
+      ],
       "path": "docs/ADR/0003-recommend-aspire-for-aspnet-projects.md"
     },
     {
@@ -24,7 +30,13 @@
       "description": "Requires backend services to instrument traces, metrics, and logs through OpenTelemetry rather than per-pillar vendor SDKs, listing the operations that must be covered automatically and the business spans that must be added by hand, so observability backends can be swapped without touching code.",
       "category": "ADR",
       "status": "accepted",
-      "tags": ["opentelemetry", "observability", "tracing", "metrics", "logging"],
+      "tags": [
+        "opentelemetry",
+        "observability",
+        "tracing",
+        "metrics",
+        "logging"
+      ],
       "path": "docs/ADR/0008-adopt-opentelemetry-for-observability.md"
     },
     {
@@ -60,7 +72,13 @@
       "description": "Settles how a feature is physically added to a module: the Features sub-namespace layout, where API payload records live versus the module's public Abstractions contracts, and how a Minimal API endpoint maps an incoming payload onto a command or query and dispatches it.",
       "category": "ADR",
       "status": "accepted",
-      "tags": ["feature-slices", "modular-monolith", "cqrs", "minimal-api", "project-layout"],
+      "tags": [
+        "feature-slices",
+        "modular-monolith",
+        "cqrs",
+        "minimal-api",
+        "project-layout"
+      ],
       "path": "docs/ADR/0009-feature-slices-module-structure.md"
     },
     {
@@ -78,7 +96,12 @@
       "description": "Adopts a modular monolith in which each bounded context owns a folder of projects behind an Abstractions contract, defines the src layout and project naming conventions, and forbids cross-module entity sharing so modules can later be extracted without a premature microservice split.",
       "category": "ADR",
       "status": "accepted",
-      "tags": ["modular-monolith", "project-layout", "modularity", "clean-architecture"],
+      "tags": [
+        "modular-monolith",
+        "project-layout",
+        "modularity",
+        "clean-architecture"
+      ],
       "path": "docs/ADR/0002-modular-monolith-structure.md"
     },
     {
@@ -91,21 +114,17 @@
       "path": "docs/ADR/0010-user-identity-resolution.md"
     },
     {
-      "id": "serve-documents-downloaded-from-github",
-      "title": "ADR 0011: Serve Documents Downloaded from GitHub at Runtime",
-      "description": "Decides that the MCP server downloads the standards from GitHub while running rather than baking them into its container image, so publishing a document is a merge to main, and accepts GitHub as a runtime dependency in exchange — stale content on a failed refresh, and an unhealthy replica only when nothing has ever loaded.",
-      "category": "ADR",
-      "status": "accepted",
-      "tags": ["mcp-server", "content-delivery", "caching", "availability"],
-      "path": "docs/ADR/0011-serve-documents-downloaded-from-github.md"
-    },
-    {
       "id": "vertical-slice-architecture",
       "title": "ADR 0007: Adopt Vertical Slice Architecture for Feature Organization",
       "description": "Requires application code to be grouped by feature rather than by technical layer, with each slice holding its own request models, handler, validation, domain logic, and data access, so a feature can be understood, changed, and deleted in one place.",
       "category": "ADR",
       "status": "accepted",
-      "tags": ["vertical-slice", "feature-organization", "clean-architecture", "patterns"],
+      "tags": [
+        "vertical-slice",
+        "feature-organization",
+        "clean-architecture",
+        "patterns"
+      ],
       "path": "docs/ADR/0007-vertical-slice-architecture.md"
     },
     {
@@ -123,7 +142,12 @@
       "description": "Lays out the recommended solution and filesystem structure for web-enabled .NET solutions: how modules and domains are organised, where Aspire orchestration projects sit, the naming conventions across layers, and when a module is ready to become an independent service.",
       "category": "Design",
       "status": "accepted",
-      "tags": ["modular-monolith", "project-layout", "aspire", "naming-conventions"],
+      "tags": [
+        "modular-monolith",
+        "project-layout",
+        "aspire",
+        "naming-conventions"
+      ],
       "path": "docs/Designs/modular-solution-structure.md"
     },
     {
