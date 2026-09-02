@@ -41,6 +41,41 @@ exactly, so asking for `testing` still finds a `unit-testing` standard. The resp
 which of the two happened. Its payload deliberately omits `tags`, so use `list_documents` to
 see the tag vocabulary the catalog actually uses.
 
+### What the server says on connect
+
+MCP lets a server return an `instructions` string during the initialization handshake, and
+clients typically put it in the model's system prompt. This server uses it, so an agent
+knows what the standards are without calling anything — and so `recommend_skills` actually
+gets called, which a tool description alone never achieves: a description is read once a
+model is already looking for a tool, and "set this repository up to follow the standards"
+is not a task anyone asks for.
+
+The text is short, fixed, and identical for every client. It says what the server serves,
+how the tools relate, and one directive: **on first use in a workspace with no skills from
+this server, call `recommend_skills`, judge the candidates against the repository, and
+write the ones that apply** — into your client's conventional skills location and nowhere
+else, after saying what you are generating and where.
+
+Three things worth being explicit about:
+
+- **The agent does the writing, not the server.** The server returns text. It has no access
+  to your filesystem and cannot create, stage, or track a file. Every file that appears was
+  written by your agent with your agent's tools, under your client's own permission model.
+- **It is a one-time bootstrap, not a per-session action.** Instructions are re-sent on
+  every connect, so the directive is conditional: an agent that finds these skills already
+  present leaves them alone. The back-reference in each generated skill is what makes that
+  check possible.
+- **Ignoring it is a supported outcome.** Instructions are guidance, not protocol. An agent
+  that never acts on the directive gets a server that works exactly like any other — the
+  four tools, on request. There is no setting to suppress the text because there is nothing
+  to suppress: not following it costs you nothing.
+
+Placement guidance names the conventional locations for a few widely used clients —
+`.claude/skills/<name>/SKILL.md`, `.github/instructions/<name>.instructions.md`,
+`.cursor/rules/<name>.mdc` — and tells anything else, or any client whose convention has
+moved on, to use its own. Those conventions do move, so the fallback is the part that
+matters; the list is a convenience, never exhaustive.
+
 ### Turning the standards into skills
 
 The other three tools answer questions when someone remembers to ask. `recommend_skills`
@@ -135,7 +170,7 @@ az bicep build --file infra/main.bicep
 | `src/HexMaster.CodingStandards.Mcp` | The protocol edge: MCP over HTTP, DI composition, `Tools/`, `/health` |
 | `src/HexMaster.CodingStandards.Docs` | Everything about documents: GitHub download, cache, retrieval, index, keyword search |
 | `tests/HexMaster.CodingStandards.Docs.Tests` | xUnit v3, offline, fixture-driven — everything about documents, tested with no host |
-| `tests/HexMaster.CodingStandards.Mcp.Tests` | The tool responses, and the `recommend_skills` instruction text |
+| `tests/HexMaster.CodingStandards.Mcp.Tests` | The tool responses, and the two instruction texts — the connect-time one and `recommend_skills`' |
 | `tools/HexMaster.CodingStandards.CatalogValidator` | `validate-catalog`, run by CI and locally |
 | `infra/` | Bicep: Container Apps environment, container app (the registry already exists) |
 | `openspec/` | Change proposals and capability specs |

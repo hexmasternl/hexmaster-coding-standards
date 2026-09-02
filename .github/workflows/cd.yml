@@ -63,6 +63,10 @@ jobs:
       - name: Resolve the image reference
         id: image
         run: |
+          # GitVersion's GetVersion target arrives with the package, so it does not exist
+          # until the project has been restored - which nothing has done at this point.
+          dotnet restore "$MCP_PROJECT"
+
           properties=$(dotnet msbuild "$MCP_PROJECT" \
             -t:SetContainerImageTagFromGitVersion \
             -getProperty:ContainerRepository \

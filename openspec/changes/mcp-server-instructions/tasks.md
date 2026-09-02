@@ -41,10 +41,10 @@
 
 ## 5. End-to-end verification and documentation
 
-- [ ] 5.1 Connect a real MCP client and confirm the instructions arrive in the initialization result and reach the model's context
+- [x] 5.1 Connect a real MCP client and confirm the instructions arrive in the initialization result and reach the model's context
 - [ ] 5.2 In a fresh .NET repository with no generated skills, confirm the agent follows the directive: calls the recommendation tool, states what it will generate, skips irrelevant candidates, and writes skills into the client's conventional location
 - [ ] 5.3 Reconnect in the same workspace and confirm the agent does not regenerate the skills it already wrote
 - [ ] 5.4 Repeat 5.2 with a second client whose convention differs, and confirm the skills land in that client's location rather than the first one's
 - [ ] 5.5 Confirm no file is written outside the client's conventional skills location
-- [ ] 5.6 Document in `README.md` what the server tells clients on connect, that the agent performs the writes, and that ignoring the directive is a supported outcome
-- [ ] 5.7 Run `dotnet build` and `dotnet test` from the repository root with no network access and confirm a clean, warning-free build and a passing offline suite
+- [x] 5.6 Document in `README.md` what the server tells clients on connect, that the agent performs the writes, and that ignoring the directive is a supported outcome
+- [x] 5.7 Run `dotnet build` and `dotnet test` from the repository root with no network access and confirm a clean, warning-free build and a passing offline suite
