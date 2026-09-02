@@ -7,31 +7,43 @@ The standards themselves are the markdown in [`docs/`](docs) — architecture de
 coding designs, and project structure standards. The MCP server downloads them from this
 repository at runtime, so **publishing a standard is a merge to `main`**, not a deployment.
 
-## Connecting an MCP client
+## Setup
 
-The server lives at **`https://standards-mcp.hexmaster.nl`** — one remote HTTP MCP endpoint,
-no authentication, nothing to install. The URL is the entire configuration.
+The server is hosted, so there is nothing to install, clone, or run: the whole configuration
+is one URL.
 
-It runs as an Azure Container App with `minReplicas: 0`, so it scales to zero when idle and
-the first request after a quiet period takes a few seconds. A client that gives up instantly
-on a cold start usually succeeds on the next try.
+| | |
+| --- | --- |
+| **Endpoint** | `https://standards-mcp.hexmaster.nl` |
+| **Transport** | MCP over streamable HTTP — no stdio command, no local proxy |
+| **Authentication** | None; the standards are public |
+| **Health check** | `https://standards-mcp.hexmaster.nl/health` returns `Healthy` |
 
-Two config shapes exist in the wild — `mcpServers` (Claude, Cursor) and `servers` (VS Code,
-Visual Studio) — but the object inside is the same. Below is each client's.
+It runs as an Azure Container App that scales to zero when idle, so the first call after a
+quiet period takes a few seconds while a replica starts and loads the catalog. Nothing is
+wrong; a client that gives up instantly succeeds on the next try.
+
+Setting it up in a repository is the same three steps in every client — **add the server,
+check that it connected, then let it write the skills** — and the third step is the one worth
+not skipping. Adding the server makes the standards available *when someone asks*. Generating
+the skills is what makes a repository follow them by default, and it is a one-time action per
+repository. [Turning the standards into skills](#turning-the-standards-into-skills) describes
+what that produces.
 
 ### Claude Code
 
-From the repository you want the standards in:
+**1. Add the server.** From the repository you want it in:
 
 ```powershell
 claude mcp add --transport http --scope project hexmaster-coding-standards https://standards-mcp.hexmaster.nl
 ```
 
-`--scope project` writes `.mcp.json` in the repository root. That is the scope to want for a
-team standard: the file is checked in, so everyone who clones the repository gets the server.
-Use `--scope user` instead to have it in every project on your machine.
+`--scope project` writes `.mcp.json` in the repository root — checked in, so everyone who
+clones the repository gets the server. `--scope user` puts it in every project on your
+machine instead, and the default `--scope local` keeps it to you in this project only. For a
+team standard, `project` is the one to want.
 
-The same thing written by hand — `.mcp.json` at the repository root:
+Written by hand, `.mcp.json` at the repository root:
 
 ```json
 {
@@ -44,19 +56,30 @@ The same thing written by hand — `.mcp.json` at the repository root:
 }
 ```
 
-Run `/mcp` in a session to check: the server should be listed as connected, with four tools.
+**2. Check that it connected.** Run `/mcp` in a session: the server should be listed as
+connected, offering four tools. A checked-in `.mcp.json` asks each user to approve the
+project's servers the first time they open it.
 
-### Claude Desktop and claude.ai
+**3. Let it write the skills.** Claude Code puts the server's connect-time instructions in
+the system prompt, so a fresh session in a repository carrying no skills from this server
+will often do this unprompted. To be explicit about it:
 
-Settings → **Connectors** → **Add custom connector**, then paste the URL. A remote MCP server
-needs no local proxy and no command — name it, give it the URL, save. It then appears in the
-attachments/tools menu of a conversation, where it can be switched on per chat.
+> Set this repository up to follow the HexMaster coding standards.
+
+It calls `recommend_skills`, judges the candidates against what the repository actually is,
+fetches only the standards that survive, and writes one skill per kept standard to
+`.claude/skills/<name>/SKILL.md`. It says what it is generating before it starts. Review the
+files and commit them — they are yours, and the server keeps no record of them.
+
+**Everyday use.** Ask in prose — "what does our ADR say about messaging?", "review this
+against our project structure standard" — and the tools get called as needed. Tool calls
+prompt for permission the first time; `/permissions` can allowlist
+`mcp__hexmaster-coding-standards` if you would rather not be asked again.
 
 ### GitHub Copilot
 
-**VS Code** — put this in `.vscode/mcp.json` to share it with the repository, or add it to
-your user profile via the **MCP: Add Server…** command (choose *HTTP*, paste the URL) to have
-it everywhere:
+**1. Add the server.** In VS Code, put this in `.vscode/mcp.json` to share it with the
+repository:
 
 ```json
 {
@@ -69,15 +92,34 @@ it everywhere:
 }
 ```
 
-Copilot Chat only calls MCP tools in **Agent** mode; in Ask mode the server is connected and
-never used. The tools picker in the chat input is where you confirm the four tools arrived.
+The key is `servers`, not `mcpServers` — VS Code and Visual Studio use that spelling. The
+**MCP: Add Server…** command does the same thing interactively (choose *HTTP*, paste the URL)
+and can write it to your user profile so it applies to every workspace. In **Visual Studio**,
+the identical JSON goes in `.mcp.json` beside the `.sln`/`.slnx` — see
+[MCP servers in Visual Studio](https://learn.microsoft.com/visualstudio/ide/mcp-servers).
 
-**Visual Studio** — the same JSON, in `.mcp.json` next to the `.sln`/`.slnx` (see
-[MCP servers in Visual Studio](https://learn.microsoft.com/visualstudio/ide/mcp-servers)).
+**2. Check that it connected.** **MCP: List Servers** shows each server's state and its
+output log, and the `mcp.json` editor has start/stop actions above every entry. Then open
+Copilot Chat, switch to **Agent** mode, and look for the four tools in the tools picker.
 
-**The Copilot coding agent** on github.com is configured separately, in the repository's
-Settings → Copilot → Coding agent → MCP configuration, where entries take an explicit tool
-allow-list:
+Agent mode is not optional: Copilot Chat only calls MCP tools there. In Ask mode the server
+connects and is then silently never used, which looks like a broken server and is not one.
+
+**3. Let it write the skills.** In Agent mode:
+
+> Call recommend_skills and set this repository up to follow the HexMaster coding standards.
+
+Being explicit matters more here than in Claude Code: a server's connect-time instructions
+are guidance, and how much weight a client gives them varies. The skills land in
+`.github/instructions/<name>.instructions.md`, each with `applyTo` frontmatter carrying the
+globs that decide when Copilot loads it. Review and commit.
+
+**Everyday use.** Agent mode, prose questions. Copilot asks to confirm a tool run the first
+time and can remember that answer per tool.
+
+**The coding agent** on github.com is configured separately from the editor, in the
+repository's Settings → Copilot → Coding agent → MCP configuration. Same URL, the
+`mcpServers` spelling, plus an explicit tool allow-list:
 
 ```json
 {
@@ -93,7 +135,8 @@ allow-list:
 
 ### Cursor
 
-`.cursor/mcp.json` in the repository, or `~/.cursor/mcp.json` for every project:
+**1. Add the server.** `.cursor/mcp.json` in the repository — checked in, shared with the
+team — or `~/.cursor/mcp.json` to have it in every project:
 
 ```json
 {
@@ -106,22 +149,51 @@ allow-list:
 }
 ```
 
-Cursor Settings → **Tools & MCP** lists the server once the file is saved; make sure it is
-enabled and showing its tools. Agent mode is what calls them.
+**2. Check that it connected.** Cursor Settings → **Tools & MCP** lists the server as soon as
+the file is saved. Make sure it is enabled and that its four tools are showing; a server that
+is listed with no tools has not finished connecting, which on a cold start means trying again
+in a few seconds.
 
-### Anything else
+**3. Let it write the skills.** In Agent mode:
 
-Any client that speaks MCP over streamable HTTP can connect to the same URL — there is no
-stdio command to run, because there is nothing to install locally. If a client only supports
-stdio, put a generic remote-MCP proxy in front of it rather than asking for a variant here.
+> Call recommend_skills and set this repository up to follow the HexMaster coding standards.
+
+The rules land in `.cursor/rules/<name>.mdc`, with `description`, `globs`, and `alwaysApply`
+frontmatter. The `.mdc` extension is load-bearing: a plain `.md` file in that directory is
+ignored. Review and commit.
+
+**Everyday use.** Agent mode calls the tools; ask in prose. Cursor's tool-approval setting
+decides whether each call needs a click.
+
+### Any other client
+
+Any client speaking MCP over streamable HTTP connects to the same URL, and the config is one
+of two shapes — `mcpServers` (Claude, Cursor, most CLIs) or `servers` (VS Code, Visual
+Studio) — with the same object inside. A client that only supports stdio needs a generic
+remote-MCP proxy in front of it: this server offers no stdio variant, because there is
+nothing to run locally.
 
 The container app's own `*.azurecontainerapps.io` ingress hostname answers identically and is
 published in the deployment summary of the most recent
-[CD run](../../actions/workflows/cd.yml) — useful if the custom domain is ever in doubt.
+[CD run](../../actions/workflows/cd.yml), which is worth knowing if the custom domain is ever
+in doubt.
 
-`GET https://standards-mcp.hexmaster.nl/health` returns `Healthy` once a replica has the
-catalog loaded, which is the quickest way to tell a cold start from a real problem before
-blaming your client's configuration.
+### When it does not work
+
+| What you see | What it usually is |
+| --- | --- |
+| The first call hangs for several seconds | Scale-from-zero. Expected — retry rather than reconfigure. |
+| The server is listed with zero tools | The connection never completed. Restart the server entry, and open `/health` in a browser to see whether the server or the client is the problem. |
+| `/health` says `Unhealthy` | That replica has never loaded the catalog — GitHub unreachable, or rate-limiting the server. It recovers by itself; there is nothing to change client-side. |
+| The model answers about the standards without calling anything | Either Copilot or Cursor is not in Agent mode, or it is answering from a generated skill — which is what they are for, and correct. |
+| Nothing happens on first use in a repository | The connect-time directive is guidance, not protocol. Ask for the setup explicitly, as in step 3. |
+| `get_document` reports an unknown id | Ids are exact and case-sensitive. Call `list_documents` or `find_documents_by_tag` first and use the id it returns. |
+| A standard changed but the answer is stale | Both caches are 30 minutes, so nothing served is older than that. |
+
+## Using the server
+
+What the four tools are, what the server tells a client the moment it connects, and
+what step 3 of the setup above actually produces.
 
 ### What the server offers
 
