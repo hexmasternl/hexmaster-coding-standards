@@ -1,22 +1,22 @@
 ## 1. Solution restructure
 
-- [ ] 1.1 Add `global.json` at the repository root pinning the .NET 10 SDK version
-- [ ] 1.2 Move `HexMaster Coding Standards.slnx` from `src/` to the repository root and fix the project path
-- [ ] 1.3 Rewrite `src/HexMaster.CodingStandards.Mcp/HexMaster.CodingStandards.Mcp.csproj`: remove `SelfContained`, `PublishSelfContained`, `PublishSingleFile`, and the multi-platform `RuntimeIdentifiers` list; keep `net10.0`, nullable, implicit usings, and the `ModelContextProtocol.AspNetCore` reference
-- [ ] 1.4 Create `src/HexMaster.CodingStandards.Docs/HexMaster.CodingStandards.Docs.csproj` as a `net10.0` class library, referencing no ASP.NET Core hosting packages beyond `Microsoft.Extensions.*` abstractions
-- [ ] 1.5 Create `tests/HexMaster.CodingStandards.Docs.Tests/` as an xUnit v3 test project referencing the Docs project only
-- [ ] 1.6 Add the Docs and test projects to the solution, and add the Mcp → Docs project reference
-- [ ] 1.7 Delete `src/HexMaster.CodingStandards.Mcp/Tools/RandomNumberTools.cs`, leaving the `Tools/` folder in place with a placeholder so it survives in git
-- [ ] 1.8 Verify `dotnet build` and `dotnet test` succeed from the repository root with no warnings
+- [x] 1.1 Add `global.json` at the repository root pinning the .NET 10 SDK version
+- [x] 1.2 Move `HexMaster Coding Standards.slnx` from `src/` to the repository root and fix the project path
+- [x] 1.3 Rewrite `src/HexMaster.CodingStandards.Mcp/HexMaster.CodingStandards.Mcp.csproj`: remove `SelfContained`, `PublishSelfContained`, `PublishSingleFile`, and the multi-platform `RuntimeIdentifiers` list; keep `net10.0`, nullable, implicit usings, and the `ModelContextProtocol.AspNetCore` reference
+- [x] 1.4 Create `src/HexMaster.CodingStandards.Docs/HexMaster.CodingStandards.Docs.csproj` as a `net10.0` class library, referencing no ASP.NET Core hosting packages beyond `Microsoft.Extensions.*` abstractions
+- [x] 1.5 Create `tests/HexMaster.CodingStandards.Docs.Tests/` as an xUnit v3 test project referencing the Docs project only
+- [x] 1.6 Add the Docs and test projects to the solution, and add the Mcp → Docs project reference
+- [x] 1.7 Delete `src/HexMaster.CodingStandards.Mcp/Tools/RandomNumberTools.cs`, leaving the `Tools/` folder in place with a placeholder so it survives in git
+- [x] 1.8 Verify `dotnet build` and `dotnet test` succeed from the repository root with no warnings
 
 ## 2. Document content tree
 
-- [ ] 2.1 Create `docs/ADR/`, `docs/Designs/`, and `docs/Structures/`
-- [ ] 2.2 Write a template ADR in `docs/ADR/` demonstrating the expected shape (decision, context, alternatives, consequences), opening with a level-one heading
-- [ ] 2.3 Write a template design document in `docs/Designs/` with a level-one heading
-- [ ] 2.4 Write a template structure document in `docs/Structures/` with a level-one heading
-- [ ] 2.5 Create `docs/index.json` with a `documents` array holding one entry per template, each with `id`, `title`, `description`, `category`, `status` (`draft`), `tags`, and `path`, sorted by category then id
-- [ ] 2.6 Confirm each entry's `title` matches its document's level-one heading and each `path` resolves
+- [x] 2.1 Create `docs/ADR/`, `docs/Designs/`, and `docs/Structures/`
+- [x] 2.2 Write a template ADR in `docs/ADR/` demonstrating the expected shape (decision, context, alternatives, consequences), opening with a level-one heading
+- [x] 2.3 Write a template design document in `docs/Designs/` with a level-one heading
+- [x] 2.4 Write a template structure document in `docs/Structures/` with a level-one heading
+- [x] 2.5 Create `docs/index.json` with a `documents` array holding one entry per template, each with `id`, `title`, `description`, `category`, `status` (`draft`), `tags`, and `path`, sorted by category then id
+- [x] 2.6 Confirm each entry's `title` matches its document's level-one heading and each `path` resolves
 
 ## 3. Catalog model and validation
 
