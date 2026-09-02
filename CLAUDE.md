@@ -37,7 +37,7 @@ docs/                                          # the served content
 
 infra/                                         # Bicep, resource-group scoped
   main.bicep                                   #   entry point, composes modules
-  modules/                                     #   registry, environment, containerApp
+  modules/                                     #   environment, containerApp
   params/prod.bicepparam                       #   prod, swedencentral
 
 .github/workflows/                             # ci.yml (PRs + main), cd.yml (main + manual)
@@ -89,9 +89,9 @@ The server is reachable on its Kestrel port locally (see `Properties/launchSetti
 - **Search is a deliberate in-memory scan over metadata only** — title, description, and tags, ranking title matches above tag matches above description matches. It does not read bodies, and cannot: bodies are fetched per document and are not resident, so matching them would mean pulling the whole corpus on the first search. At tens of documents an index would be infrastructure serving a problem this project does not have. It sits behind an interface if that changes.
 - **The listing payload is five fields on purpose** — `id`, `title`, `category`, `description`, `tags` — and deliberately omits `status`, so a client cannot currently tell an `accepted` standard from a `superseded` or `deprecated` one. `DocumentSummary` still carries it, so adding it back is a one-line change to `DocumentListEntry`. Open question, not an oversight.
 - **The container image is framework-dependent `linux-x64`.** The template's `SelfContained` / `PublishSingleFile` / multi-RID settings were removed on purpose — the base image supplies the runtime, and cold-start time matters under scale-to-zero.
-- **CD deploys Bicep twice per release**: deploy infra → build and push the image to the now-existing registry → redeploy infra pinned to the image SHA. That is what makes a fresh subscription self-bootstrapping. Pushes touching only `docs/**` do **not** trigger CD.
-- **No secrets anywhere.** Azure auth is OIDC federated credentials (`vars.*` only, no `secrets.*` in either workflow); the container app pulls from the registry with a user-assigned managed identity holding `AcrPull`, and registry admin credentials are disabled.
-- **Two Bicep details that look odd and are not.** The `AcrPull` role assignment lives *inside* `modules/registry.bicep` because an assignment name must be computable at the start of the deployment, and the registry's resource id only is inside that module. And `main.bicep` omits the app's `registries` block entirely while the image is the `mcr.microsoft.com` placeholder — naming a registry that holds no image yet would fail the first revision, which is exactly the bootstrap case the placeholder exists for.
+- **CD is one push and one deployment.** The registry is *not* part of this repository's infrastructure — it already exists — so a release is: build and push the SHA-tagged image, then deploy Bicep once pinned to that image. There is no bootstrap dance any more, because there is nothing to bootstrap. Pushes touching only `docs/**` do **not** trigger CD.
+- **The registry is the one thing reached with secrets.** Azure sign-in is still OIDC federated credentials (`vars.*`, no client secret). The registry is reached with the `ACR_LOGIN_SERVER` / `ACR_LOGIN_USERNAME` / `ACR_LOGIN_PASSWORD` repository secrets: CD logs Docker in with them to push, and passes the same three values to Bicep so the container app can pull. `registryPassword` is a `@secure()` parameter — ARM keeps it out of the deployment history — and lands as the container app secret `registry-password`, which the `registries` block references. There is deliberately no managed identity and no `AcrPull` assignment; the registry's access model is not ours to set.
+- **The app's `registries` block is conditional, and the placeholder image is why.** `containerImage` defaults to `mcr.microsoft.com/k8se/quickstart:latest`, and `usesRegistry` (`!empty(registryLoginServer)`) leaves `secrets` and `registries` empty when no credentials were supplied. That is what lets the template be deployed or validated without registry secrets; CD always supplies them.
 
 ## Conventions
 

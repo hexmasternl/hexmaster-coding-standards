@@ -92,7 +92,7 @@ az bicep build --file infra/main.bicep
 | `src/HexMaster.CodingStandards.Docs` | Everything about documents: GitHub download, cache, retrieval, index, keyword search |
 | `tests/HexMaster.CodingStandards.Docs.Tests` | xUnit v3, offline, fixture-driven |
 | `tools/HexMaster.CodingStandards.CatalogValidator` | `validate-catalog`, run by CI and locally |
-| `infra/` | Bicep: Container Apps environment, registry, container app |
+| `infra/` | Bicep: Container Apps environment, container app (the registry already exists) |
 | `openspec/` | Change proposals and capability specs |
 
 The dependency runs one way — `Mcp` → `Docs` — which is what keeps the document logic
